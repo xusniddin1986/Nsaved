@@ -140,7 +140,7 @@ def about_command(message):
 # ---------------- WEBHOOKNI SET QILISH (Render URL bilan) -----------------
 @app.before_first_request
 def set_webhook():
-    WEBHOOK_URL = f"https://YOUR_RENDER_SERVICE_NAME.onrender.com/telegram_webhook"
+    WEBHOOK_URL = "https://nsavedbot.onrender.com/telegram_webhook"
     bot.remove_webhook()
     bot.set_webhook(url=WEBHOOK_URL)
 
