@@ -1,27 +1,25 @@
-from flask import flask
+from flask import Flask
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from yt_dlp import YoutubeDL
 import os
 import uuid
+import threading
+
+# --- Flask App ---
+app = Flask(__name__)
 
 # --- Token ---
 BOT_TOKEN = "8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY"
 bot = telebot.TeleBot(BOT_TOKEN)
 
-threading.Thread(target=lambda: bot.infinity_polling()).start()
+CHANNEL_USERNAME = "@aclubnc"
+CAPTION_TEXT = "Telegramda video yuklab beradigan eng zo'r botlardan biri 🚀 | @Nsaved_bot"
 
+# ---------------- HOME PAGE -----------------
 @app.route("/")
 def home():
-    return "Bot ishlayapti!"
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-
-
-CHANNEL_USERNAME = "@aclubnc"
-CAPTION_TEXT = "Telegramda video yuklab beradigan eng zo'r botlardan biri, 🚀| @Nsaved_bot"
+    return "Bot ishlayapti! 🔥"
 
 # ---------------- /start handler -----------------
 @bot.message_handler(commands=["start"])
@@ -56,7 +54,7 @@ def start(message):
         )
         bot.send_message(
             message.chat.id,
-            f"❗ Botdan foydalanish uchun kanalimizga obuna bo‘ling: {CHANNEL_USERNAME}",
+            f"❗ Botdan foydalanish uchun kanalga obuna bo‘ling: {CHANNEL_USERNAME}",
             reply_markup=markup
         )
 
@@ -89,7 +87,6 @@ def download_instagram_video(message):
 
     loading_msg = bot.send_message(message.chat.id, "⏳ Video yuklanmoqda...")
 
-    # Noyob fayl nomi yaratish
     filename = f"{uuid.uuid4()}.mp4"
     ydl_opts = {"format": "mp4", "outtmpl": filename, "quiet": True}
 
@@ -111,5 +108,13 @@ def download_instagram_video(message):
             text=f"❌ Video topilmadi yoki link noto‘g‘ri!\n{e}"
         )
 
-# ---------------- Botni ishga tushurish -----------------
-bot.infinity_polling()
+# ---------------- BOTNI THREAD ICHIDA ISHLATISH -----------------
+def run_bot():
+    bot.infinity_polling()
+
+threading.Thread(target=run_bot).start()
+
+# ---------------- FLASK SERVERNI ISHLATISH -----------------
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
