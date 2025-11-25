@@ -3,9 +3,13 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQu
 from yt_dlp import YoutubeDL
 import os
 
-BOT_TOKEN = "8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY"
+from telegram import Bot
+
+TOKEN = os.environ.get("8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY")
+bot = Bot(TOKEN)
+
+bot = telebot.TeleBot(TOKEN)
 CHANNEL_USERNAME = "@aclubnc"
-bot = telebot.TeleBot(BOT_TOKEN)
 
 CAPTION_TEXT = "Telegramda video yuklab beradigan eng zo'r bot | @Nsaved_bot"
 
@@ -22,7 +26,7 @@ def start(message):
         if member.status in ["creator", "administrator", "member"]:
             bot.send_message(
                 message.chat.id,
-                "Siz kanalga obuna bo‘ldingiz ✅\n\nInstagram video linkini yuboring 🚀"
+                "Siz kanalga obuna bo‘ldingiz ✅\n\nInstagram video linkini yuboring 🚀",
             )
             return
         else:
@@ -37,12 +41,7 @@ def start(message):
                 url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}",
             )
         )
-        markup.add(
-            InlineKeyboardButton(
-                "✅ Obuna bo‘ldim",
-                callback_data="subscribed"
-            )
-        )
+        markup.add(InlineKeyboardButton("✅ Obuna bo‘ldim", callback_data="subscribed"))
 
         bot.send_message(
             message.chat.id,
@@ -65,13 +64,17 @@ def callback_inline(call: CallbackQuery):
 
                 bot.send_message(
                     call.message.chat.id,
-                    "Siz kanalga obuna bo‘ldingiz! ✅\n\nInstagram link yuboring 🚀"
+                    "Siz kanalga obuna bo‘ldingiz! ✅\n\nInstagram link yuboring 🚀",
                 )
             else:
-                bot.answer_callback_query(call.id, "❌ Hali obuna bo‘lmadingiz!", show_alert=True)
+                bot.answer_callback_query(
+                    call.id, "❌ Hali obuna bo‘lmadingiz!", show_alert=True
+                )
 
         except:
-            bot.answer_callback_query(call.id, "❌ Xatolik! Qayta urinib ko‘ring.", show_alert=True)
+            bot.answer_callback_query(
+                call.id, "❌ Xatolik! Qayta urinib ko‘ring.", show_alert=True
+            )
 
 
 # ---------------- Video yuklash handler -----------------
