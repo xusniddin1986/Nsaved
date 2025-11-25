@@ -5,7 +5,7 @@ import os
 import uuid
 
 # ---------------- Token -----------------
-BOT_TOKEN = os.environ.get("BOT_TOKEN")  # Environment variable
+BOT_TOKEN = os.environ.get("8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY")  # Environment variable
 bot = telebot.TeleBot(BOT_TOKEN)
 
 CHANNEL_USERNAME = "@aclubnc"
