@@ -7,10 +7,10 @@ from yt_dlp import YoutubeDL
 from youtube_search import YoutubeSearch
 
 # --- SOZLAMALAR ---
-API_TOKEN = 'TOKENINGIZNI_SHU_YERGA_YOZING'
-ADMIN_ID = 12345678  # O'zingizning ID raqamingizni yozing (BotFather orqali bilsangiz bo'ladi)
+BOT_TOKEN = '8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY'
+ADMIN_ID = 5767267885  # O'zingizning ID raqamingizni yozing (BotFather orqali bilsangiz bo'ladi)
 
-bot = Bot(token=API_TOKEN)
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 # Video yuklash funksiyasi (Instagram, TikTok, YouTube)
