@@ -6,109 +6,125 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from yt_dlp import YoutubeDL
 from youtube_search import YoutubeSearch
 
-# --- SOZLAMALAR ---
-BOT_TOKEN = '8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY'
-ADMIN_ID = 5767267885  # O'zingizning ID raqamingizni yozing (BotFather orqali bilsangiz bo'ladi)
+# ================== SOZLAMALAR ==================
+BOT_TOKEN = "8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY"
+ADMIN_ID = 5767267885
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Video yuklash funksiyasi (Instagram, TikTok, YouTube)
-def download_video(url):
+# ================== VIDEO YUKLASH ==================
+def download_video(url: str) -> str:
+    if not os.path.exists("downloads"):
+        os.makedirs("downloads")
+
     ydl_opts = {
-        'format': 'best[ext=mp4]/best',
-        'outtmpl': 'downloads/%(title)s.%(ext)s',
-        'max_filesize': 45 * 1024 * 1024, # 45MB cheklov
+        "format": "best[filesize_approx<=45M]/best",
+        "outtmpl": "downloads/%(title)s.%(ext)s",
+        "quiet": True,
     }
-    if not os.path.exists('downloads'): os.makedirs('downloads')
+
     with YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         return ydl.prepare_filename(info)
 
-# --- BOT BUYRUQLARI ---
-
+# ================== START ==================
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
-    await message.answer(f"Salom {message.from_user.full_name}!\nLink yuboring (Video yuklash) yoki Musiqa nomini yozing.")
+    await message.answer(
+        f"Salom {message.from_user.full_name}!\n\n"
+        "🔗 Video link yuboring\n"
+        "🎵 Yoki musiqa nomini yozing"
+    )
 
-# Admin Panel
+# ================== ADMIN ==================
 @dp.message(Command("admin"))
 async def admin_panel(message: types.Message):
     if message.from_user.id == ADMIN_ID:
-        await message.answer("🛠 Admin Panel\n\nFoydalanuvchilar soni: 1 (Hozircha bazasiz)")
+        await message.answer("🛠 Admin Panel\n\nBot ishlayapti ✅")
     else:
-        await message.answer("Kechirasiz, siz admin emassiz.")
+        await message.answer("❌ Siz admin emassiz")
 
-# Video yuklash (Link kelganda)
+# ================== VIDEO HANDLER ==================
 @dp.message(F.text.contains("http"))
 async def handle_video(message: types.Message):
-    msg = await message.answer("Video tayyorlanmoqda, kuting... ⏳")
+    wait_msg = await message.answer("⏳ Video yuklanmoqda, kuting...")
+
     try:
         path = await asyncio.to_thread(download_video, message.text)
         video = types.FSInputFile(path)
-        await message.answer_video(video, caption="Botingiz orqali yuklab olindi ✅")
-        os.remove(path) # Serverda joy band qilmaslik uchun o'chirish
-        await msg.delete()
-    except Exception as e:
-        await msg.edit_text(f"Xatolik yuz berdi: {str(e)}")
 
-# Musiqa qidirish va Inline Tugmalar
-@dp.message(F.text)
+        await message.answer_video(
+            video=video,
+            caption="✅ Video muvaffaqiyatli yuklandi"
+        )
+
+        os.remove(path)
+        await wait_msg.delete()
+
+    except Exception as e:
+        await wait_msg.edit_text(f"❌ Xatolik: {e}")
+
+# ================== MUSIQA QIDIRISH ==================
+@dp.message(F.text & ~F.text.contains("http"))
 async def search_music(message: types.Message):
     query = message.text
     results = YoutubeSearch(query, max_results=10).to_dict()
-    
-    if not results:
-        return await message.answer("Hech narsa topilmadi 😕")
 
-    builder = InlineKeyboardBuilder()
-    text = f"🔍 '{query}' bo'yicha natijalar:\n\n"
-    
+    if not results:
+        await message.answer("😕 Hech narsa topilmadi")
+        return
+
+    kb = InlineKeyboardBuilder()
+    text = f"🔍 '{query}' bo‘yicha natijalar:\n\n"
+
     for i, res in enumerate(results, 1):
         text += f"{i}. {res['title']} ({res['duration']})\n"
-        # Callback ma'lumotiga video ID sini saqlaymiz
-        builder.button(text=str(i), callback_data=f"music_{res['id']}")
-    
-    builder.adjust(5) # Tugmalarni 5 tadan qilib 2 qatorga teradi
-    await message.answer(text, reply_markup=builder.as_markup())
+        kb.button(text=str(i), callback_data=f"music_{res['id']}")
 
-# Musiqani yuklab yuborish (Tugma bosilganda)
+    kb.adjust(5)
+    await message.answer(text, reply_markup=kb.as_markup())
+
+# ================== MUSIQA YUKLASH ==================
 @dp.callback_query(F.data.startswith("music_"))
 async def send_music(callback: types.CallbackQuery):
-    video_id = callback.data.split("_")[1]
-    url = f"www.youtube.com{video_id}"
-    await callback.message.edit_text("Musiqa yuklanmoqda... 🎧")
-    
+    video_id = callback.data.split("_", 1)[1]
+    url = f"https://www.youtube.com{video_id}"
+
+    await callback.message.edit_text("🎧 Musiqa yuklanmoqda...")
+
     try:
+        if not os.path.exists("downloads"):
+            os.makedirs("downloads")
+
         ydl_opts = {
-            'format': 'bestaudio/best',
-            'outtmpl': 'downloads/%(title)s.%(ext)s',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
+            "format": "bestaudio/best",
+            "outtmpl": "downloads/%(title)s.%(ext)s",
+            "quiet": True,
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
             }],
         }
+
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            path = ydl.prepare_filename(info).replace(".webm", ".mp3").replace(".m4a", ".mp3")
-            
+            path = os.path.splitext(ydl.prepare_filename(info))[0] + ".mp3"
+
         audio = types.FSInputFile(path)
         await callback.message.answer_audio(audio)
-        await callback.message.delete()
-        os.remove(path)
-    except Exception as e:
-        await callback.message.answer(f"Yuklashda xato: {e}")
 
-# Botni ishga tushirish
+        os.remove(path)
+        await callback.message.delete()
+
+    except Exception as e:
+        await callback.message.answer(f"❌ Xatolik: {e}")
+
+# ================== BOT START ==================
 async def main():
-    print("Bot ishga tushdi...")
+    print("🤖 Bot ishga tushdi...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-# ---------------- WEBHOOK -----------------
-WEBHOOK_URL = "https://nsaved.onrender.com/telegram_webhook"
-bot.remove_webhook()
-bot.set_webhook(url=WEBHOOK_URL)
