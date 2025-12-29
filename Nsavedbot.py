@@ -142,7 +142,7 @@ def admin(message):
     )
 
 # ---------------- WEBHOOK SET ----------------
-WEBHOOK_URL = "https://SENING_DOMENING.onrender.com/telegram_webhook"
+WEBHOOK_URL = "https://nsaved.onrender.com/telegram_webhook"
 bot.remove_webhook()
 bot.set_webhook(url=WEBHOOK_URL)
 
