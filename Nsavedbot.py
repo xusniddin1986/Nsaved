@@ -9,7 +9,7 @@ import uuid
 app = Flask(__name__)
 
 # ---------------- BOT ----------------
-BOT_TOKEN = "BOT_TOKENINGNI_BU_YERGA_QO‘Y"
+BOT_TOKEN = "8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY"
 bot = telebot.TeleBot(BOT_TOKEN)
 
 CHANNEL_USERNAME = "@aclubnc"
@@ -150,4 +150,3 @@ bot.set_webhook(url=WEBHOOK_URL)
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-    
