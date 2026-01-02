@@ -14,7 +14,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 CHANNEL_USERNAME = "@aclubnc"
 CAPTION_TEXT = (
-    "Telegramda video yuklab beradigan eng zo'r botlardan biri 🚀 | @Nsaved_bot"
+    "📥 @Nsaved_Bot orqali yuklab olindi"
 )
 
 # ---------------- ADMIN ID VA STATISTIKA -----------------
