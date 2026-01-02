@@ -1,152 +1,160 @@
-from flask import Flask, request
-import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from yt_dlp import YoutubeDL
 import os
 import uuid
+import telebot
+from flask import Flask, request
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from yt_dlp import YoutubeDL
 
-# ---------------- FLASK ----------------
-app = Flask(__name__)
-
-# ---------------- BOT ----------------
+# --- Sozlamalar ---
 BOT_TOKEN = "8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY"
 bot = telebot.TeleBot(BOT_TOKEN)
+app = Flask(__name__) # Flaskni to'g'ri e'lon qilish
 
 CHANNEL_USERNAME = "@aclubnc"
-CAPTION_TEXT = "📥 @Nsaved_Bot orqali yuklab olindi"
-
 ADMIN_ID = 5767267885
-users = set()
+AD_TEXT = "📥 @Nsaved_Bot orqali yuklab olindi"
+
+users = set()     
 total_downloads = 0
-today_downloads = 0
+search_cache = {}
 
-# ---------------- HOME ----------------
-@app.route("/")
-def home():
-    return "Bot ishlayapti 🔥"
+# --- Obuna tekshirish ---
+def check_sub(user_id):
+    try:
+        member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        return member.status in ["creator", "administrator", "member"]
+    except:
+        return True
 
-# ---------------- WEBHOOK ----------------
-@app.route("/telegram_webhook", methods=["POST"])
-def telegram_webhook():
-    update = telebot.types.Update.de_json(
-        request.stream.read().decode("utf-8")
-    )
-    bot.process_new_updates([update])
-    return "ok", 200
-
-# ---------------- /start ----------------
 @bot.message_handler(commands=["start"])
 def start(message):
-    try:
-        member = bot.get_chat_member(CHANNEL_USERNAME, message.from_user.id)
-        if member.status in ["creator", "administrator", "member"]:
-            bot.send_message(
-                message.chat.id,
-                "✅ Obuna tasdiqlandi\n\nYouTube yoki Instagram link yuboring 🚀"
-            )
-            return
-    except:
-        pass
-
-    kb = InlineKeyboardMarkup()
-    kb.add(
-        InlineKeyboardButton(
-            "📢 Kanalga obuna bo‘lish",
-            url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"
-        )
-    )
-    kb.add(
-        InlineKeyboardButton("✅ Obuna bo‘ldim", callback_data="subscribed")
-    )
-
-    bot.send_message(
-        message.chat.id,
-        "❗ Botdan foydalanish uchun kanalga obuna bo‘ling",
-        reply_markup=kb
-    )
-
-# ---------------- SUBSCRIBE CALLBACK ----------------
-@bot.callback_query_handler(func=lambda call: call.data == "subscribed")
-def subscribed(call):
-    try:
-        member = bot.get_chat_member(CHANNEL_USERNAME, call.from_user.id)
-        if member.status in ["creator", "administrator", "member"]:
-            bot.answer_callback_query(call.id, "✅ Obuna tasdiqlandi")
-            bot.send_message(
-                call.message.chat.id,
-                "Endi YouTube yoki Instagram link yuboring 🚀"
-            )
-        else:
-            bot.answer_callback_query(call.id, "❌ Obuna yo‘q", show_alert=True)
-    except:
-        bot.answer_callback_query(call.id, "❌ Xatolik", show_alert=True)
-
-# ---------------- YOUTUBE + INSTAGRAM ----------------
-@bot.message_handler(func=lambda m: m.text and (
-    "youtube.com" in m.text or
-    "youtu.be" in m.text or
-    "instagram.com" in m.text
-))
-def download_video(message):
-    global total_downloads, today_downloads
-
     users.add(message.from_user.id)
-    url = message.text.strip()
+    if not check_sub(message.from_user.id):
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("📢 Kanalga obuna bo‘ling", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"))
+        markup.add(InlineKeyboardButton("✅ Obuna bo‘ldim", callback_data="check_sub"))
+        bot.send_message(message.chat.id, f"❗ Botdan foydalanish uchun kanalga obuna bo‘ling: {CHANNEL_USERNAME}", reply_markup=markup)
+    else:
+        bot.send_message(message.chat.id, "Xush kelibsiz! 🚀\n\nNideo link yuboring yoki musiqa nomini yozing.")
 
-    loading = bot.send_message(message.chat.id, "⏳ Video yuklanmoqda...")
+@bot.message_handler(func=lambda m: True)
+def handle_all_messages(message):
+    if not check_sub(message.from_user.id): return start(message)
+    text = message.text.strip()
+    if "instagram.com" in text: download_insta(message)
+    elif "youtube.com" in text or "youtu.be" in text: process_yt_link(message, text)
+    else: search_youtube(message)
 
-    filename = f"{uuid.uuid4()}.mp4"
-    ydl_opts = {
-        "format": "mp4/best",
-        "outtmpl": filename,
-        "quiet": True,
-        "merge_output_format": "mp4"
-    }
+def process_yt_link(message, text):
+    status = bot.send_message(message.chat.id, "🔗 Havola aniqlandi...")
+    try:
+        ydl_opts = {"quiet": True, "extract_flat": True, "extractor_args": {"youtube": ["player_client=default"]}}
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(text, download=False)
+            search_cache[message.from_user.id] = [info]
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("🎵 MP3", callback_data="type_mp3_0"), InlineKeyboardButton("🎬 MP4", callback_data="type_mp4_0"))
+        bot.edit_message_text(f"🎬 <b>{info['title']}</b>", message.chat.id, status.message_id, parse_mode="HTML", reply_markup=markup)
+    except Exception as e:
+        bot.edit_message_text(f"❌ Xato: {str(e)[:50]}", message.chat.id, status.message_id)
 
+def search_youtube(message):
+    query = message.text
+    status = bot.send_message(message.chat.id, "🔍 Qidirilmoqda...")
+    try:
+        ydl_opts = {"format": "bestaudio/best", "quiet": True, "extract_flat": True, "extractor_args": {"youtube": ["player_client=default"]}}
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"ytsearch10:{query}", download=False)
+            entries = info.get("entries", [])
+        if not entries: return bot.edit_message_text("😔 Topilmadi.", message.chat.id, status.message_id)
+        search_cache[message.from_user.id] = entries
+        markup = InlineKeyboardMarkup()
+        res_text = "<b>🔍 Natijalar:</b>\n\n"
+        for i, entry in enumerate(entries[:10]):
+            res_text += f"{i+1}. {entry['title']}\n"
+            markup.add(InlineKeyboardButton(f"{i+1}", callback_data=f"sel_{i}"))
+        bot.edit_message_text(res_text, message.chat.id, status.message_id, parse_mode="HTML", reply_markup=markup)
+    except: bot.edit_message_text("❌ Qidiruvda xatolik.", message.chat.id, status.message_id)
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callbacks(call):
+    try:
+        if call.data == "check_sub":
+            if check_sub(call.from_user.id):
+                bot.delete_message(call.message.chat.id, call.message.message_id)
+                bot.send_message(call.message.chat.id, "Tayyor! ✅")
+            else: bot.answer_callback_query(call.id, "Obuna bo'lmagansiz! ❌", show_alert=True)
+        elif call.data.startswith("sel_"):
+            idx = call.data.split("_")[1]
+            markup = InlineKeyboardMarkup()
+            markup.add(InlineKeyboardButton("🎵 MP3", callback_data=f"type_mp3_{idx}"), InlineKeyboardButton("🎬 MP4", callback_data=f"type_mp4_{idx}"))
+            bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=markup)
+        elif call.data.startswith("type_"): download_yt(call)
+    except: pass
+
+def download_yt(call):
+    global total_downloads
+    _, f_type, idx = call.data.split("_")
+    user_id = call.from_user.id
+    if user_id not in search_cache: return
+    video_info = search_cache[user_id][int(idx)]
+    url = f"https://www.youtube.com/watch?v={video_info['id']}"
+    try: bot.edit_message_text(f"⏳ {f_type.upper()} yuklanmoqda...", call.message.chat.id, call.message.message_id)
+    except: pass
+    filename = f"downloads/{uuid.uuid4()}"
+    ydl_opts = {"outtmpl": f"{filename}.%(ext)s", "quiet": True, "extractor_args": {"youtube": ["player_client=default"]}}
+    if f_type == "mp3":
+        ydl_opts.update({"format": "bestaudio/best", "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}]})
+    else: ydl_opts.update({"format": "best[ext=mp4]/best"})
     try:
         with YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-
-        bot.delete_message(message.chat.id, loading.message_id)
-
-        with open(filename, "rb") as video:
-            bot.send_video(
-                message.chat.id,
-                video,
-                caption=CAPTION_TEXT,
-                supports_streaming=True
-            )
-
+            info = ydl.extract_info(url, download=True)
+            real_file = ydl.prepare_filename(info)
+            if f_type == "mp3": real_file = real_file.rsplit(".", 1)[0] + ".mp3"
+        with open(real_file, "rb") as f:
+            if f_type == "mp3": bot.send_audio(call.message.chat.id, f, caption=AD_TEXT)
+            else: bot.send_video(call.message.chat.id, f, caption=AD_TEXT) # XATO: 'v' o'rniga 'f'
+        try: bot.delete_message(call.message.chat.id, call.message.message_id)
+        except: pass
         total_downloads += 1
-        today_downloads += 1
+        if os.path.exists(real_file): os.remove(real_file)
+    except: bot.send_message(call.message.chat.id, "❌ Yuklashda xato.")
+
+def download_insta(message):
+    global total_downloads
+    status = bot.send_message(message.chat.id, "⏳ Instagram...")
+    filename = f"downloads/{uuid.uuid4()}.mp4"
+    try:
+        with YoutubeDL({"format": "mp4", "outtmpl": filename, "quiet": True}) as ydl:
+            ydl.download([message.text])
+        with open(filename, "rb") as v:
+            bot.send_video(message.chat.id, v, caption=AD_TEXT)
+        try: bot.delete_message(message.chat.id, status.message_id)
+        except: pass
         os.remove(filename)
+        total_downloads += 1
+    except: bot.edit_message_text("❌ Xatolik.", message.chat.id, status.message_id)
 
-    except Exception:
-        bot.edit_message_text(
-            "❌ Video yuklab bo‘lmadi yoki link noto‘g‘ri",
-            message.chat.id,
-            loading.message_id
-        )
+# --- Webhook ---
+RENDER_URL = os.environ.get("https://nsaved.onrender.com") # To'g'ri usul
 
-# ---------------- ADMIN ----------------
-@bot.message_handler(commands=["admin"])
-def admin(message):
-    if message.from_user.id != ADMIN_ID:
-        return bot.send_message(message.chat.id, "❌ Siz admin emassiz")
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def receive_update():
+    if request.headers.get("content-type") == "application/json":
+        json_string = request.get_data().decode("utf-8")
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return ""
+    return "Forbidden", 403
 
-    bot.send_message(
-        message.chat.id,
-        f"📊 Statistika\n\n"
-        f"👤 Foydalanuvchilar: {len(users)}\n"
-        f"📥 Yuklab olinganlar: {total_downloads}"
-    )
+@app.route("/")
+def index(): return "Bot is running!"
 
-# ---------------- WEBHOOK SET ----------------
-WEBHOOK_URL = "https://nsaved.onrender.com/telegram_webhook"
-bot.remove_webhook()
-bot.set_webhook(url=WEBHOOK_URL)
-
-# ---------------- RUN ----------------
 if __name__ == "__main__":
+    if not os.path.exists("downloads"): os.makedirs("downloads")
+    bot.remove_webhook()
+    if RENDER_URL:
+        bot.set_webhook(url=f"{RENDER_URL}/{BOT_TOKEN}")
+        print(f"🚀 Webhook: {RENDER_URL}")
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
