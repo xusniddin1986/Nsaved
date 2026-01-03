@@ -13,9 +13,7 @@ BOT_TOKEN = "8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY"
 bot = telebot.TeleBot(BOT_TOKEN)
 
 CHANNEL_USERNAME = "@aclubnc"
-CAPTION_TEXT = (
-    "📥 @Nsaved_Bot orqali yuklab olindi"
-)
+CAPTION_TEXT = "📥 @Nsaved_Bot orqali yuklab olindi"
 
 # ---------------- ADMIN ID VA STATISTIKA -----------------
 ADMIN_ID = 5767267885
@@ -48,7 +46,7 @@ def start(message):
         if member.status in ["creator", "administrator", "member"]:
             bot.send_message(
                 message.chat.id,
-                "Siz kanalga obuna bo‘ldingiz ✅\n\nInstagramdan video linkini yuboring 🚀",
+                "Siz kanalga obuna bo‘ldingiz ✅\n\nInstagram yoki YouTube'dan video linkini yuboring 🚀",
             )
             return
         else:
@@ -79,7 +77,7 @@ def callback_inline(call: CallbackQuery):
                 bot.answer_callback_query(call.id, "Obuna tasdiqlandi! ✅")
                 bot.send_message(
                     call.message.chat.id,
-                    "Siz kanalga obuna bo‘ldingiz! ✅\n\nInstagramdan link yuboring 🚀",
+                    "Siz kanalga obuna bo‘ldingiz! ✅\n\nVideo linkini yuboring 🚀",
                 )
             else:
                 bot.answer_callback_query(
@@ -95,27 +93,17 @@ def callback_inline(call: CallbackQuery):
 @bot.message_handler(commands=["help"])
 def help_command(message):
     help_text = (
-        "🔥 Assalomu alaykum. @MsavedBot ga Xush kelibsiz. Bot orqali quyidagilarni yuklab olishingiz mumkin:\n\n"
+        "🔥 Assalomu alaykum. @Nsaved_Bot ga Xush kelibsiz. Bot orqali quyidagilarni yuklab olishingiz mumkin:\n\n"
         "• Instagram - post va IGTV + audio bilan;\n"
-        "• TikTok - suv belgisiz video + audio bilan;\n"
         "• YouTube - videolar va shorts + audio bilan;\n"
-        "• Snapchat - suv belgisiz video + audio bilan;\n"
-        "• Likee - suv belgisiz video + audio bilan;\n"
-        "• Pinterest - suv belgisiz video va rasmlar + audio bilan;\n\n"
-        "Shazam funksiya:\n"
-        "• Qo‘shiq nomi yoki ijrochi ismi\n"
-        "• Qo‘shiq matni\n"
-        "• Ovozli xabar\n"
-        "• Video\n"
-        "• Audio\n"
-        "• Video xabar\n"
-        "🚀 Yuklab olmoqchi bo'lgan videoga havolani yuboring!\n"
-        "😎 Bot guruhlarda ham ishlay oladi!"
+        "• TikTok - suv belgisiz video + audio bilan;\n"
+        "• Snapchat, Likee, Pinterest...\n\n"
+        "🚀 Yuklab olmoqchi bo'lgan videoga havolani yuboring!"
     )
     bot.send_message(message.chat.id, help_text)
 
 
-# ---------------- /about handler (TO‘G‘RILANGAN) -----------------
+# ---------------- /about handler -----------------
 @bot.message_handler(commands=["about"])
 def about_command(message):
     about_text = (
@@ -128,7 +116,7 @@ def about_command(message):
     bot.send_message(message.chat.id, about_text)
 
 
-# ---------------- ADMIN PANEL HANDLER (TO‘G‘RILANGAN) -----------------
+# ---------------- ADMIN PANEL HANDLER -----------------
 @bot.message_handler(commands=["admin", "panel"])
 def admin_panel(message):
     if message.from_user.id != ADMIN_ID:
@@ -145,7 +133,7 @@ def admin_panel(message):
     bot.send_message(message.chat.id, "🛠 Admin Panel", reply_markup=kb)
 
 
-# ---------------- CALLBACK FOR ADMIN PANEL (TO‘G‘RILANGAN) -----------------
+# ---------------- CALLBACK FOR ADMIN PANEL -----------------
 @bot.callback_query_handler(
     func=lambda call: call.data
     in ["total_stats", "today_stats", "top_users", "user_list"]
@@ -185,20 +173,33 @@ def admin_stats(call):
             bot.send_message(call.message.chat.id, text)
 
 
-# ---------------- VIDEO DOWNLOAD HANDLER -----------------
+# ---------------- VIDEO DOWNLOAD HANDLER (UNIVERSAL) -----------------
 @bot.message_handler(func=lambda m: True)
-def download_instagram_video(message):
+def download_video(message):
     global total_downloads, today_downloads
     users.add(message.from_user.id)
 
     url = message.text.strip()
-    if "instagram.com" not in url:
-        bot.reply_to(message, "❌ Instagramdan video linkini yuboring!")
+
+    # Linklarni tekshirish
+    is_instagram = "instagram.com" in url
+    is_youtube = any(domain in url for domain in ["youtube.com", "youtu.be"])
+
+    if not is_instagram and not is_youtube:
+        bot.reply_to(message, "❌ Iltimos, Instagram yoki YouTubedan video linkini yuboring!")
         return
 
     loading_msg = bot.send_message(message.chat.id, "⏳ Video yuklanmoqda...")
     filename = f"{uuid.uuid4()}.mp4"
-    ydl_opts = {"format": "mp4", "outtmpl": filename, "quiet": True}
+
+    # yt-dlp sozlamalari
+    ydl_opts = {
+        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        "outtmpl": filename,
+        "quiet": True,
+        "no_warnings": True,
+        "merge_output_format": "mp4",
+    }
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
@@ -211,13 +212,18 @@ def download_instagram_video(message):
 
         total_downloads += 1
         today_downloads += 1
-        os.remove(filename)
+
+        if os.path.exists(filename):
+            os.remove(filename)
 
     except Exception as e:
+        if os.path.exists(filename):
+            os.remove(filename)
+
         bot.edit_message_text(
             chat_id=message.chat.id,
             message_id=loading_msg.message_id,
-            text=f"❌ Xatolik yoki noto‘g‘ri link!\n{e}",
+            text=f"❌ Xatolik yuz berdi! Link noto'g'ri yoki video juda katta bo'lishi mumkin.",
         )
 
 
