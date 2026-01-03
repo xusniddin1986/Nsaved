@@ -4,235 +4,121 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQu
 from yt_dlp import YoutubeDL
 import os
 import uuid
+import time
 
 # --- Flask App ---
 app = Flask(__name__)
 
-# --- Token ---
+# --- Token --- (Xavfsizlik uchun tokenni o'zgartirishni maslahat beraman)
 BOT_TOKEN = "8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY"
 bot = telebot.TeleBot(BOT_TOKEN)
 
 CHANNEL_USERNAME = "@aclubnc"
 CAPTION_TEXT = "📥 @Nsaved_Bot orqali yuklab olindi"
 
-# ---------------- ADMIN ID VA STATISTIKA -----------------
+# ---------------- STATISTIKA (Ma'lumotlar bazasi o'rniga vaqtinchalik) -----------------
 ADMIN_ID = 5767267885
 users = set()
 total_downloads = 0
-today_downloads = 0
 
+# ---------------- YT-DLP PROGRESS HOOK -----------------
+# Bu funksiya yuklash jarayonini terminalda ko'rsatadi
+def progress_hook(d):
+    if d['status'] == 'downloading':
+        print(f"Yuklanmoqda: {d['_percent_str']} tezlik: {d['_speed_str']}")
 
-# ---------------- HOME PAGE -----------------
+# ---------------- UNIVERSAL YUKLOVCHI SOZLAMASI -----------------
+def get_ydl_opts(filename):
+    return {
+        'format': 'bestvideo[ext=mp4]+bestaudio[m4a]/best[ext=mp4]/best',
+        'outtmpl': filename,
+        'quiet': True,
+        'no_warnings': True,
+        'ignoreerrors': True,
+        'progress_hooks': [progress_hook],
+        # YouTube va boshqa saytlar bloklamasligi uchun user-agent
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+
+# ---------------- WEBHOOKS & HOME -----------------
 @app.route("/")
-def home():
-    return "Bot ishlayapti! 🔥"
+def home(): return "Bot Active! 🔥"
 
-
-# ---------------- TELEGRAM WEBHOOK ENDPOINT -----------------
 @app.route("/telegram_webhook", methods=["POST"])
 def telegram_webhook():
-    json_str = request.get_data().decode("utf-8")
-    update = telebot.types.Update.de_json(json_str)
-    bot.process_new_updates([update])
-    return "ok", 200
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return ''
+    else: return "Forbidden", 403
 
-
-# ---------------- /start handler -----------------
+# ---------------- START HANDLER -----------------
 @bot.message_handler(commands=["start"])
 def start(message):
-    user_id = message.from_user.id
+    users.add(message.from_user.id)
     try:
-        member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        member = bot.get_chat_member(CHANNEL_USERNAME, message.from_user.id)
         if member.status in ["creator", "administrator", "member"]:
-            bot.send_message(
-                message.chat.id,
-                "Siz kanalga obuna bo‘ldingiz ✅\n\nInstagram yoki YouTube'dan video linkini yuboring 🚀",
-            )
-            return
+            bot.send_message(message.chat.id, "Xush kelibsiz! 🚀\nLink yuboring (Insta, YT, TikTok, Pinterest):")
         else:
             raise Exception()
     except:
-        markup = InlineKeyboardMarkup()
-        markup.add(
-            InlineKeyboardButton(
-                "📢 Kanalga obuna bo‘ling",
-                url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}",
-            )
-        )
-        markup.add(InlineKeyboardButton("✅ Obuna bo‘ldim", callback_data="subscribed"))
-        bot.send_message(
-            message.chat.id,
-            f"❗ Botdan foydalanish uchun kanalga obuna bo‘ling: {CHANNEL_USERNAME}",
-            reply_markup=markup,
-        )
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("📢 Obuna bo‘lish", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}")],
+                                      [InlineKeyboardButton("✅ Tekshirish", callback_data="check")]])
+        bot.send_message(message.chat.id, "Botdan foydalanish uchun kanalga obuna bo'ling!", reply_markup=markup)
 
-
-# ---------------- Callback handler -----------------
-@bot.callback_query_handler(func=lambda call: True)
-def callback_inline(call: CallbackQuery):
-    if call.data == "subscribed":
-        try:
-            member = bot.get_chat_member(CHANNEL_USERNAME, call.from_user.id)
-            if member.status in ["creator", "administrator", "member"]:
-                bot.answer_callback_query(call.id, "Obuna tasdiqlandi! ✅")
-                bot.send_message(
-                    call.message.chat.id,
-                    "Siz kanalga obuna bo‘ldingiz! ✅\n\nVideo linkini yuboring 🚀",
-                )
-            else:
-                bot.answer_callback_query(
-                    call.id, "❌ Hali obuna bo‘lmadiz!", show_alert=True
-                )
-        except:
-            bot.answer_callback_query(
-                call.id, "❌ Xatolik! Qayta urinib ko‘ring.", show_alert=True
-            )
-
-
-# ---------------- /help handler -----------------
-@bot.message_handler(commands=["help"])
-def help_command(message):
-    help_text = (
-        "🔥 Assalomu alaykum. @Nsaved_Bot ga Xush kelibsiz. Bot orqali quyidagilarni yuklab olishingiz mumkin:\n\n"
-        "• Instagram - post va IGTV + audio bilan;\n"
-        "• YouTube - videolar va shorts + audio bilan;\n"
-        "• TikTok - suv belgisiz video + audio bilan;\n"
-        "• Snapchat, Likee, Pinterest...\n\n"
-        "🚀 Yuklab olmoqchi bo'lgan videoga havolani yuboring!"
-    )
-    bot.send_message(message.chat.id, help_text)
-
-
-# ---------------- /about handler -----------------
-@bot.message_handler(commands=["about"])
-def about_command(message):
-    about_text = (
-        "🤖 Bot nomi: Nsaved Bot\n"
-        "🛠 Versiya: 1.0.0\n"
-        "💾 Texnologiya: Python, Flask, pyTelegramBotAPI, yt-dlp\n"
-        "📢 Telegram kanalimiz: @aclubnc\n"
-        "👨‍💻 Bot-Yaratuvchisi: Nabiyulloh.X\n"
-    )
-    bot.send_message(message.chat.id, about_text)
-
-
-# ---------------- ADMIN PANEL HANDLER -----------------
-@bot.message_handler(commands=["admin", "panel"])
-def admin_panel(message):
-    if message.from_user.id != ADMIN_ID:
-        return bot.send_message(message.chat.id, "❌ Siz admin emassiz!")
-
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("📊 Umumiy statistika", callback_data="total_stats"))
-    kb.add(InlineKeyboardButton("📅 Bugungi statistika", callback_data="today_stats"))
-    kb.add(InlineKeyboardButton("🏆 TOP foydalanuvchilar", callback_data="top_users"))
-    kb.add(
-        InlineKeyboardButton("👤 Foydalanuvchilar ro‘yxati", callback_data="user_list")
-    )
-
-    bot.send_message(message.chat.id, "🛠 Admin Panel", reply_markup=kb)
-
-
-# ---------------- CALLBACK FOR ADMIN PANEL -----------------
-@bot.callback_query_handler(
-    func=lambda call: call.data
-    in ["total_stats", "today_stats", "top_users", "user_list"]
-)
-def admin_stats(call):
-    if call.from_user.id != ADMIN_ID:
-        return bot.answer_callback_query(call.id, "⛔ Ruxsat yo‘q!", show_alert=True)
-
-    if call.data == "total_stats":
-        text = (
-            "📊 Umumiy statistika\n\n"
-            f"👤 Foydalanuvchilar: {len(users)} ta\n"
-            f"📥 Yuklangan videolar: {total_downloads} ta"
-        )
-        bot.send_message(call.message.chat.id, text)
-
-    elif call.data == "today_stats":
-        text = (
-            "📅 Bugungi statistika\n\n"
-            f"📥 Bugun yuklangan videolar: {today_downloads} ta"
-        )
-        bot.send_message(call.message.chat.id, text)
-
-    elif call.data == "top_users":
-        bot.send_message(
-            call.message.chat.id,
-            "🏆 TOP foydalanuvchilar\n\n" "Hozircha mavjud emas 😅",
-        )
-
-    elif call.data == "user_list":
-        if len(users) == 0:
-            bot.send_message(call.message.chat.id, "👤 Foydalanuvchilar yo‘q.")
-        else:
-            text = "👤 Foydalanuvchilar ro‘yxati:\n\n"
-            for uid in users:
-                text += f"- {uid}\n"
-            bot.send_message(call.message.chat.id, text)
-
-
-# ---------------- VIDEO DOWNLOAD HANDLER (UNIVERSAL) -----------------
-@bot.message_handler(func=lambda m: True)
-def download_video(message):
-    global total_downloads, today_downloads
-    users.add(message.from_user.id)
-
-    url = message.text.strip()
-
-    # Linklarni tekshirish
-    is_instagram = "instagram.com" in url
-    is_youtube = any(domain in url for domain in ["youtube.com", "youtu.be"])
-
-    if not is_instagram and not is_youtube:
-        bot.reply_to(message, "❌ Iltimos, Instagram yoki YouTubedan video linkini yuboring!")
-        return
-
-    loading_msg = bot.send_message(message.chat.id, "⏳ Video yuklanmoqda...")
-    filename = f"{uuid.uuid4()}.mp4"
-
-    # yt-dlp sozlamalari
-    ydl_opts = {
-        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-        "outtmpl": filename,
-        "quiet": True,
-        "no_warnings": True,
-        "merge_output_format": "mp4",
-    }
-
+@bot.callback_query_handler(func=lambda call: call.data == "check")
+def check_sub(call):
     try:
-        with YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+        member = bot.get_chat_member(CHANNEL_USERNAME, call.from_user.id)
+        if member.status in ["creator", "administrator", "member"]:
+            bot.edit_message_text("Rahmat! Endi link yuborishingiz mumkin.", call.message.chat.id, call.message.message_id)
+        else:
+            bot.answer_callback_query(call.id, "Obuna bo'lmadingiz! ❌", show_alert=True)
+    except: pass
 
-        bot.delete_message(message.chat.id, loading_msg.message_id)
-
-        with open(filename, "rb") as video:
-            bot.send_video(message.chat.id, video, caption=CAPTION_TEXT)
-
-        total_downloads += 1
-        today_downloads += 1
+# ---------------- ASOSIY YUKLOVCHI (MUKAMMAL) -----------------
+@bot.message_handler(func=lambda m: m.text and m.text.startswith("http"))
+def handle_download(message):
+    global total_downloads
+    url = message.text.strip()
+    msg = bot.reply_to(message, "🔍 Havola tahlil qilinmoqda...")
+    
+    unique_id = uuid.uuid4()
+    filename = f"video_{unique_id}.mp4"
+    
+    try:
+        with YoutubeDL(get_ydl_opts(filename)) as ydl:
+            bot.edit_message_text("📥 Serverga yuklanmoqda...", message.chat.id, msg.message_id)
+            info = ydl.extract_info(url, download=True)
+            title = info.get('title', 'Video')
 
         if os.path.exists(filename):
-            os.remove(filename)
+            bot.edit_message_text("📤 Telegramga yuborilmoqda...", message.chat.id, msg.message_id)
+            with open(filename, 'rb') as v:
+                bot.send_video(message.chat.id, v, caption=f"🎬 {title}\n\n{CAPTION_TEXT}")
+            
+            total_downloads += 1
+            bot.delete_message(message.chat.id, msg.message_id)
+        else:
+            bot.edit_message_text("❌ Videoni yuklab bo'lmadi. Havola noto'g'ri yoki video juda uzun.", message.chat.id, msg.message_id)
 
     except Exception as e:
+        bot.edit_message_text(f"⚠️ Xatolik: Havola qo'llab-quvvatlanmaydi yoki serverda cheklov mavjud.", message.chat.id, msg.message_id)
+        print(f"Error: {e}")
+    
+    finally:
         if os.path.exists(filename):
             os.remove(filename)
 
-        bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=loading_msg.message_id,
-            text=f"❌ Xatolik yuz berdi! Link noto'g'ri yoki video juda katta bo'lishi mumkin.",
-        )
+# ---------------- ADMIN PANEL -----------------
+@bot.message_handler(commands=["admin"])
+def admin(message):
+    if message.from_user.id == ADMIN_ID:
+        bot.send_message(message.chat.id, f"📊 Statistika:\n\n👤 Foydalanuvchilar: {len(users)}\n📥 Yuklamalar: {total_downloads}")
 
-
-# ---------------- WEBHOOK -----------------
-WEBHOOK_URL = "https://nsaved.onrender.com/telegram_webhook"
-bot.remove_webhook()
-bot.set_webhook(url=WEBHOOK_URL)
-
-# ---------------- RUN FLASK -----------------
+# ---------------- RUN -----------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
