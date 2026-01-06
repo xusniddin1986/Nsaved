@@ -126,7 +126,7 @@ def handle_all(message):
 if __name__ == "__main__":
     print("Bot polling rejimida ishga tushdi...")
     bot.remove_webhook() # Webhookni vaqtincha o'chiramiz
-    time.sleep(1)
+    
     
     # Flaskni emas, botni to'g'ridan-to'g'ri ishga tushiramiz
     bot.infinity_polling()
