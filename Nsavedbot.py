@@ -266,23 +266,32 @@ def main_handler(message):
     else:
         search_music(message)
 
-# ---------------- WEBHOOK SETUP -----------------
+# # ---------------- WEBHOOK SETUP -----------------
 
-@app.route('/')
-def index(): return "Bot is Online! 🚀", 200
+# @app.route('/')
+# def index(): return "Bot is Online! 🚀", 200
 
-@app.route("/telegram_webhook", methods=['POST'])
-def telegram_webhook():
-    if request.headers.get('content-type') == 'application/json':
-        update = telebot.types.Update.de_json(request.get_data().decode('utf-8'))
-        bot.process_new_updates([update])
-        return '', 200
-    return "error", 403
+# @app.route("/telegram_webhook", methods=['POST'])
+# def telegram_webhook():
+#     if request.headers.get('content-type') == 'application/json':
+#         update = telebot.types.Update.de_json(request.get_data().decode('utf-8'))
+#         bot.process_new_updates([update])
+#         return '', 200
+#     return "error", 403
 
-# ---------------- RUN -----------------
-bot.remove_webhook()
-time.sleep(1)
-bot.set_webhook(url="https://nsaved.onrender.com/telegram_webhook")
+# # ---------------- RUN -----------------
+# bot.remove_webhook()
+# time.sleep(1)
+# bot.set_webhook(url="https://nsaved.onrender.com/telegram_webhook")
+
+# if __name__ == "__main__":
+#     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
+# Bu qismlarni vaqtinchalik o'chirib turing:
+# bot.remove_webhook()
+# bot.set_webhook(url="...")
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    # Flaskni alohida thread'da yoki shunchaki pollingdan foydalaning
+    print("Bot ishga tushdi...")
+    bot.infinity_polling()
