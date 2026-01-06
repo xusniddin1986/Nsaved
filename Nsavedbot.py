@@ -123,11 +123,10 @@ def handle_all(message):
         # Bu yerga musiqa qidirish funksiyasini qo'shishingiz mumkin
         bot.send_message(message.chat.id, "🔎 Musiqa qidirish uchun qo'shiq nomini aniqroq yozing.")
 
-# ---------------- RUN -----------------
 if __name__ == "__main__":
-    bot.remove_webhook()
-    # Port Render uchun 10000 yoki 5000 bo'lishi kerak
-    port = int(os.environ.get("PORT", 10000))
-    # Render URL manzilingizni bu yerga qo'ying
-    bot.set_webhook(url="https://nsaved.onrender.com/telegram_webhook")
-    app.run(host="0.0.0.0", port=port)
+    print("Bot polling rejimida ishga tushdi...")
+    bot.remove_webhook() # Webhookni vaqtincha o'chiramiz
+    time.sleep(1)
+    
+    # Flaskni emas, botni to'g'ridan-to'g'ri ishga tushiramiz
+    bot.infinity_polling()
