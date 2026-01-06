@@ -1,6 +1,6 @@
 from flask import Flask, request
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from yt_dlp import YoutubeDL
 import os
 import uuid
@@ -8,205 +8,296 @@ import uuid
 # --- Flask App ---
 app = Flask(__name__)
 
-# --- Token ---
+# --- Token va Sozlamalar ---
 BOT_TOKEN = "8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY"
 bot = telebot.TeleBot(BOT_TOKEN)
 
-CHANNEL_USERNAME = "@aclubnc"
-CAPTION_TEXT = (
-    "Telegramda video yuklab beradigan eng zo'r botlardan biri 🚀 | @Nsaved_bot"
-)
+CHANNEL_USERNAME = "@aclubnc"  # Kanal username (o'zgartiring)
+ADMIN_ID = 5767267885         # Admin ID (o'zgartiring)
 
-# ---------------- ADMIN ID VA STATISTIKA -----------------
-ADMIN_ID = 5767267885
+# --- Matnlar ---
+VIDEO_CAPTION = "📥 @Nsaved_Bot orqali yuklab olindi"
+MUSIC_CAPTION = "@Nsaved_Bot orqali istagan musiqangizni tez va oson toping! 🎧"
+
+# --- Xotira ---
 users = set()
+users_data = {}  # { user_id: {'last_url': '...', 'search_results': [...] } }
 total_downloads = 0
 today_downloads = 0
 
-# ---------------- HOME PAGE -----------------
-@app.route("/")
-def home():
-    return "Bot ishlayapti! 🔥"
+# --- Helper: User ma'lumotlari ---
+def get_user_data(user_id):
+    if user_id not in users_data:
+        users_data[user_id] = {'last_url': None, 'search_results': []}
+    return users_data[user_id]
 
-# ---------------- TELEGRAM WEBHOOK ENDPOINT -----------------
-@app.route("/telegram_webhook", methods=["POST"])
-def telegram_webhook():
-    json_str = request.get_data().decode("utf-8")
-    update = telebot.types.Update.de_json(json_str)
-    bot.process_new_updates([update])
-    return "ok", 200
-
-# ---------------- /start handler -----------------
-@bot.message_handler(commands=["start"])
-def start(message):
-    user_id = message.from_user.id
+# --- Helper: Obuna tekshirish ---
+def check_subscription(user_id):
     try:
         member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        if member.status in ["creator", "administrator", "member"]:
-            bot.send_message(
-                message.chat.id,
-                "Siz kanalga obuna bo‘ldingiz ✅\n\nInstagramdan video linkini yuboring 🚀",
-            )
-            return
-        else:
-            raise Exception()
+        return member.status in ["creator", "administrator", "member"]
     except:
-        markup = InlineKeyboardMarkup()
-        markup.add(
-            InlineKeyboardButton(
-                "📢 Kanalga obuna bo‘ling",
-                url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}",
-            )
-        )
-        markup.add(InlineKeyboardButton("✅ Obuna bo‘ldim", callback_data="subscribed"))
+        return False
+
+# --- Helper: Asosiy Menyu (Rasmdagidek tugmalar) ---
+def main_menu_keyboard():
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    btn1 = KeyboardButton("📥 Video Yuklash")
+    btn2 = KeyboardButton("🎧 Musiqa Qidirish")
+    btn3 = KeyboardButton("🆘 Yordam / Help")
+    btn4 = KeyboardButton("ℹ️ Bot haqida / About")
+    markup.add(btn1, btn2, btn3, btn4)
+    return markup
+
+# --- Helper: Admin Menyu (Admin panel tugmalari) ---
+def admin_menu_keyboard():
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    btn1 = KeyboardButton("📊 Statistika")
+    btn2 = KeyboardButton("📅 Bugungi hisobot")
+    btn3 = KeyboardButton("👥 Userlar ro'yxati")
+    btn4 = KeyboardButton("🔙 Bosh menyu")
+    markup.add(btn1, btn2, btn3, btn4)
+    return markup
+
+# ---------------- COMMANDALAR -----------------
+
+# 1. /start commandasi
+@bot.message_handler(commands=["start"])
+def start_command(message):
+    user_id = message.from_user.id
+    users.add(user_id)
+    
+    if check_subscription(user_id):
         bot.send_message(
             message.chat.id,
-            f"❗ Botdan foydalanish uchun kanalga obuna bo‘ling: {CHANNEL_USERNAME}",
-            reply_markup=markup,
+            "<b>Assalomu alaykum!</b> 👋\n\nBotdan foydalanish uchun pastdagi menyudan tanlang yoki to'g'ridan-to'g'ri link yuboring.",
+            parse_mode="HTML",
+            reply_markup=main_menu_keyboard()
+        )
+    else:
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("📢 Kanalga qo'shilish", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"))
+        # /join komandasini chaqiradigan tugma yo'q, lekin callback orqali tekshiramiz
+        markup.add(InlineKeyboardButton("✅ Tekshirish", callback_data="check_sub"))
+        
+        bot.send_message(
+            message.chat.id,
+            f"❌ <b>Botdan foydalanish uchun kanalga obuna bo‘ling!</b>\n\nKanal: {CHANNEL_USERNAME}\n\nObuna bo'lib 'Tekshirish' ni bosing yoki /join deb yozing.",
+            parse_mode="HTML",
+            reply_markup=markup
         )
 
-# ---------------- Callback handler -----------------
-@bot.callback_query_handler(func=lambda call: True)
-def callback_inline(call: CallbackQuery):
-    if call.data == "subscribed":
-        try:
-            member = bot.get_chat_member(CHANNEL_USERNAME, call.from_user.id)
-            if member.status in ["creator", "administrator", "member"]:
-                bot.answer_callback_query(call.id, "Obuna tasdiqlandi! ✅")
-                bot.send_message(
-                    call.message.chat.id,
-                    "Siz kanalga obuna bo‘ldingiz! ✅\n\nInstagramdan link yuboring 🚀",
-                )
-            else:
-                bot.answer_callback_query(
-                    call.id, "❌ Hali obuna bo‘lmadiz!", show_alert=True
-                )
-        except:
-            bot.answer_callback_query(
-                call.id, "❌ Xatolik! Qayta urinib ko‘ring.", show_alert=True
-            )
+# 2. /join commandasi (Obunani tekshirish)
+@bot.message_handler(commands=["join"])
+def join_command(message):
+    user_id = message.from_user.id
+    if check_subscription(user_id):
+        bot.send_message(message.chat.id, "✅ Obuna tasdiqlandi! Botdan foydalanishingiz mumkin.", reply_markup=main_menu_keyboard())
+    else:
+        bot.send_message(message.chat.id, f"❌ Siz hali {CHANNEL_USERNAME} kanaliga obuna bo'lmadingiz.")
 
-# ---------------- /help handler -----------------
+# 3. /help commandasi
 @bot.message_handler(commands=["help"])
 def help_command(message):
-    help_text = (
-        "🛠️ Bot yordamchisi\n\n"
-        "/start - Botni ishga tushurish\n"
-        "/help - Yordam ma'lumotlari\n"
-        "/about - Bot haqida ma'lumot\n"
-        "/admin - Admin paneli (faqat admin)\n\n"
-        "Instagramdan video linkini yuborib videoni yuklab olishingiz mumkin 🚀\n"
-        "Bog‘lanish: @thexamidovs"
+    text = (
+        "<b>🆘 Yordam Bo'limi</b>\n\n"
+        "🔹 <b>Video yuklash:</b> Instagram yoki YouTube linkini shunchaki botga yuboring.\n"
+        "🔹 <b>Musiqa topish:</b> 'Musiqa Qidirish' tugmasini bosing yoki shunchaki musiqa nomini yozing (link yubormasdan).\n"
+        "🔹 <b>/admin:</b> Adminlar uchun maxsus panel.\n\n"
+        "Murojaat uchun: @thexamidovs"
     )
-    bot.send_message(message.chat.id, help_text)
+    bot.send_message(message.chat.id, text, parse_mode="HTML")
 
-# ---------------- /about handler (TO‘G‘RILANGAN) -----------------
+# 4. /about commandasi
 @bot.message_handler(commands=["about"])
 def about_command(message):
-    about_text = (
-        "🤖 Nsaved Bot\n\n"
-        "🔥 Assalomu alaykum! @Nsaved_bot ga xush kelibsiz.\n\n"
-        "Bot orqali siz quyidagilarni yuklab olishingiz mumkin:\n"
-        "• Instagram postlar\n"
-        "• Reels videolar\n"
-        "• Stories (audio bilan)\n\n"
-        "📢 Telegram kanalimiz: @aclubnc\n"
-        "👨‍💻 Bot-Yaratuvchisi: Nabiyulloh.X\n"
+    text = (
+        "<b>🤖 Nsaved Bot haqida</b>\n\n"
+        "Bu bot orqali siz Instagram va YouTube tarmoqlaridan video va audiolarni oson yuklab olishingiz mumkin.\n\n"
+        "👨‍💻 Dasturchi: Nabiyulloh.X\n"
+        "📢 Kanal: @aclubnc"
     )
-    bot.send_message(message.chat.id, about_text)
+    bot.send_message(message.chat.id, text, parse_mode="HTML")
 
-# ---------------- ADMIN PANEL HANDLER (TO‘G‘RILANGAN) -----------------
-@bot.message_handler(commands=["admin", "panel"])
-def admin_panel(message):
-    if message.from_user.id != ADMIN_ID:
-        return bot.send_message(message.chat.id, "❌ Siz admin emassiz!")
-
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("📊 Umumiy statistika", callback_data="total_stats"))
-    kb.add(InlineKeyboardButton("📅 Bugungi statistika", callback_data="today_stats"))
-    kb.add(InlineKeyboardButton("🏆 TOP foydalanuvchilar", callback_data="top_users"))
-    kb.add(InlineKeyboardButton("👤 Foydalanuvchilar ro‘yxati", callback_data="user_list"))
-    
-    bot.send_message(message.chat.id, "🛠 Admin Panel", reply_markup=kb)
-
-# ---------------- CALLBACK FOR ADMIN PANEL (TO‘G‘RILANGAN) -----------------
-@bot.callback_query_handler(func=lambda call: call.data in ["total_stats", "today_stats", "top_users", "user_list"])
-def admin_stats(call):
-    if call.from_user.id != ADMIN_ID:
-        return bot.answer_callback_query(call.id, "⛔ Ruxsat yo‘q!", show_alert=True)
-
-    if call.data == "total_stats":
-        text = (
-            "📊 Umumiy statistika\n\n"
-            f"👤 Foydalanuvchilar: {len(users)} ta\n"
-            f"📥 Yuklangan videolar: {total_downloads} ta"
-        )
-        bot.send_message(call.message.chat.id, text)
-
-    elif call.data == "today_stats":
-        text = (
-            "📅 Bugungi statistika\n\n"
-            f"📥 Bugun yuklangan videolar: {today_downloads} ta"
-        )
-        bot.send_message(call.message.chat.id, text)
-
-    elif call.data == "top_users":
+# 5. /admin commandasi (ADMIN PANEL)
+@bot.message_handler(commands=["admin"])
+def admin_command(message):
+    if message.from_user.id == ADMIN_ID:
         bot.send_message(
-            call.message.chat.id,
-            "🏆 TOP foydalanuvchilar\n\n"
-            "Hozircha mavjud emas 😅"
+            message.chat.id, 
+            "<b>🕴 Admin Panelga xush kelibsiz!</b>\nQuidagi tugmalar orqali botni boshqaring:", 
+            parse_mode="HTML",
+            reply_markup=admin_menu_keyboard()
         )
+    else:
+        bot.send_message(message.chat.id, "❌ Siz admin emassiz!")
 
-    elif call.data == "user_list":
-        if len(users) == 0:
-            bot.send_message(call.message.chat.id, "👤 Foydalanuvchilar yo‘q.")
-        else:
-            text = "👤 Foydalanuvchilar ro‘yxati:\n\n"
-            for uid in users:
-                text += f"- {uid}\n"
-            bot.send_message(call.message.chat.id, text)
+# ---------------- MATNLI XABARLAR (MENYU VA LINKLAR) -----------------
+@bot.message_handler(func=lambda message: True)
+def handle_text(message):
+    user_id = message.from_user.id
+    text = message.text.strip()
+    users.add(user_id)
 
-# ---------------- VIDEO DOWNLOAD HANDLER -----------------
-@bot.message_handler(func=lambda m: True)
-def download_instagram_video(message):
-    global total_downloads, today_downloads
-    users.add(message.from_user.id)
-
-    url = message.text.strip()
-    if "instagram.com" not in url:
-        bot.reply_to(message, "❌ Instagramdan video linkini yuboring!")
+    # 1. Obuna bo'lmasa ishlamaydi (faqat admin panelga ruxsat yo'q, lekin oddiy so'zlarga check qo'yamiz)
+    if not check_subscription(user_id) and user_id != ADMIN_ID:
+        bot.send_message(message.chat.id, f"Iltimos, avval {CHANNEL_USERNAME} kanaliga obuna bo'ling va /join deb yozing.")
         return
 
-    loading_msg = bot.send_message(message.chat.id, "⏳ Video yuklanmoqda...")
-    filename = f"{uuid.uuid4()}.mp4"
-    ydl_opts = {"format": "mp4", "outtmpl": filename, "quiet": True}
+    # --- ADMIN TUGMALARI LOGIKASI ---
+    if user_id == ADMIN_ID:
+        if text == "📊 Statistika":
+            bot.send_message(message.chat.id, f"📊 <b>Umumiy Statistika:</b>\n\n👥 Foydalanuvchilar: {len(users)}\n📥 Jami yuklashlar: {total_downloads}", parse_mode="HTML")
+            return
+        elif text == "📅 Bugungi hisobot":
+            bot.send_message(message.chat.id, f"📅 <b>Bugungi ko'rsatkich:</b>\n\n📥 Yuklashlar: {today_downloads} ta", parse_mode="HTML")
+            return
+        elif text == "👥 Userlar ro'yxati":
+            users_list = "\n".join([str(u) for u in list(users)[:20]]) # Faqat oxirgi 20 tasi
+            bot.send_message(message.chat.id, f"👥 <b>Foydalanuvchilar ID lari:</b>\n{users_list}", parse_mode="HTML")
+            return
+        elif text == "🔙 Bosh menyu":
+            bot.send_message(message.chat.id, "Asosiy menyuga qaytildi.", reply_markup=main_menu_keyboard())
+            return
 
+    # --- USER MENYU TUGMALARI LOGIKASI ---
+    if text == "🆘 Yordam / Help":
+        help_command(message)
+    elif text == "ℹ️ Bot haqida / About":
+        about_command(message)
+    elif text == "📥 Video Yuklash":
+        bot.send_message(message.chat.id, "Instagram yoki YouTube video linkini yuboring 👇")
+    elif text == "🎧 Musiqa Qidirish":
+        bot.send_message(message.chat.id, "Musiqa nomini yoki ijrochi ismini yozing 👇")
+    
+    # --- ASOSIY FUNKSIYALAR (LINK YOKI QIDIRUV) ---
+    elif "instagram.com" in text or "youtube.com" in text or "youtu.be" in text:
+        download_video(message, text)
+    else:
+        # Agar menyu buyrug'i bo'lmasa, demak bu musiqa qidiruvi
+        if not text.startswith("/"):
+            search_music(message)
+
+# ---------------- CALLBACK HANDLER (Tugmalar uchun) -----------------
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    user_id = call.from_user.id
+    
+    # Obunani tekshirish tugmasi bosilganda
+    if call.data == "check_sub":
+        if check_subscription(user_id):
+            bot.answer_callback_query(call.id, "✅ Obuna tasdiqlandi!")
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            bot.send_message(call.message.chat.id, "Xush kelibsiz! 🔥", reply_markup=main_menu_keyboard())
+        else:
+            bot.answer_callback_query(call.id, "❌ Hali obuna bo'lmadingiz!", show_alert=True)
+
+    # Videodan musiqa yuklash
+    elif call.data == "dl_music_from_video":
+        data = get_user_data(user_id)
+        url = data.get('last_url')
+        if url:
+            bot.answer_callback_query(call.id, "⏳ Musiqa yuklanmoqda...")
+            download_audio(call.message.chat.id, url)
+        else:
+            bot.answer_callback_query(call.id, "Link eskirgan.")
+
+    # Qidiruv natijasini tanlash
+    elif call.data.startswith("select_"):
+        try:
+            index = int(call.data.split("_")[1])
+            data = get_user_data(user_id)
+            results = data.get('search_results', [])
+            if 0 <= index < len(results):
+                url = results[index]['webpage_url']
+                bot.answer_callback_query(call.id, f"📥 {results[index]['title']} yuklanmoqda...")
+                download_audio(call.message.chat.id, url)
+        except:
+            pass
+
+# ---------------- FUNKSIYALAR (DOWNLOADER) -----------------
+def download_video(message, url):
+    global total_downloads, today_downloads
+    get_user_data(message.from_user.id)['last_url'] = url
+    msg = bot.send_message(message.chat.id, "⏳ Video yuklanmoqda...")
+    
+    filename = f"{uuid.uuid4()}.mp4"
+    ydl_opts = {'format': 'best[ext=mp4]', 'outtmpl': filename, 'quiet': True}
+    
     try:
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-
-        bot.delete_message(message.chat.id, loading_msg.message_id)
-
+        bot.delete_message(message.chat.id, msg.message_id)
+        
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("🎵 Musiqani yuklab olish", callback_data="dl_music_from_video"))
+        
         with open(filename, "rb") as video:
-            bot.send_video(message.chat.id, video, caption=CAPTION_TEXT)
-
+            bot.send_video(message.chat.id, video, caption=VIDEO_CAPTION, reply_markup=markup)
+        
         total_downloads += 1
         today_downloads += 1
         os.remove(filename)
-
     except Exception as e:
-        bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=loading_msg.message_id,
-            text=f"❌ Xatolik yoki noto‘g‘ri link!\n{e}",
-        )
+        bot.edit_message_text(f"❌ Xatolik: {e}", message.chat.id, msg.message_id)
+        if os.path.exists(filename): os.remove(filename)
 
-# ---------------- WEBHOOK -----------------
-WEBHOOK_URL = "https://nsaved.onrender.com/telegram_webhook"
-bot.remove_webhook()
-bot.set_webhook(url=WEBHOOK_URL)
+def download_audio(chat_id, url):
+    global total_downloads, today_downloads
+    msg = bot.send_message(chat_id, "🎵 Audio yuklanmoqda...")
+    filename = f"{uuid.uuid4()}"
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': filename,
+        'quiet': True,
+        'postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '192'}],
+    }
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        final_filename = f"{filename}.mp3"
+        with open(final_filename, "rb") as audio:
+            bot.send_audio(chat_id, audio, caption=MUSIC_CAPTION)
+        bot.delete_message(chat_id, msg.message_id)
+        total_downloads += 1
+        today_downloads += 1
+        if os.path.exists(final_filename): os.remove(final_filename)
+    except Exception as e:
+        bot.edit_message_text("❌ Xatolik yuz berdi.", chat_id, msg.message_id)
 
-# ---------------- RUN FLASK -----------------
+def search_music(message):
+    query = message.text.strip()
+    msg = bot.send_message(message.chat.id, f"🔎 Qidirilmoqda: {query}...")
+    ydl_opts = {'format': 'bestaudio/best', 'quiet': True, 'extract_flat': True, 'noplaylist': True, 'limit': 10}
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"ytsearch10:{query}", download=False)
+        entries = info.get('entries', [])
+        if not entries:
+            return bot.edit_message_text("❌ Hech narsa topilmadi.", message.chat.id, msg.message_id)
+        
+        get_user_data(message.from_user.id)['search_results'] = entries
+        text = "🎤 <b>Qidiruv natijalari:</b>\n\n"
+        markup = InlineKeyboardMarkup(row_width=5)
+        buttons = []
+        for i, entry in enumerate(entries):
+            text += f"{i+1}. {entry.get('title', 'No Title')}\n"
+            buttons.append(InlineKeyboardButton(str(i+1), callback_data=f"select_{i}"))
+        markup.add(*buttons)
+        bot.delete_message(message.chat.id, msg.message_id)
+        bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
+    except:
+        bot.edit_message_text("❌ Qidirishda xatolik.", message.chat.id, msg.message_id)
+
+# ---------------- START -----------------
+# Webhook qismini o'zingiz serveringizga moslab qoldiring yoki polling ishlating
 if __name__ == "__main__":
+    # Agar mahalliy kompyuterda sinasangiz:
+    # bot.infinity_polling()
+    
+    # Agar Render/Serverda bo'lsa:
+    WEBHOOK_URL = "https://nsaved.onrender.com/telegram_webhook"
+    bot.remove_webhook()
+    bot.set_webhook(url=WEBHOOK_URL)
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
