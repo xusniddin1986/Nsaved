@@ -18,9 +18,9 @@ from aiogram.client.default import DefaultBotProperties
 from yt_dlp import YoutubeDL
 
 # ================== CONFIG ==================
-BOT_TOKEN = "BOT_TOKENINGNI_BUYERGA_QO'Y"
-CHANNEL_USERNAME = "@KANAL_USERNAME"   # majburiy obuna kanali
-ADMIN_IDS = {123456789}                # admin Telegram ID lar
+BOT_TOKEN = "8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY"
+CHANNEL_USERNAME = "@aclubnc"   # majburiy obuna kanali
+ADMIN_IDS = {5767267885}                # admin Telegram ID lar
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
