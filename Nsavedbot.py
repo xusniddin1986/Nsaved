@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQu
 from yt_dlp import YoutubeDL
 
 # Bot tokenini yozing
-API_TOKEN = 'SIZNING_BOT_TOKENINGIZ'
+API_TOKEN = '8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY'
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
