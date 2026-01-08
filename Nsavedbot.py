@@ -154,6 +154,10 @@ async def download_handler(callback: types.CallbackQuery, state: FSMContext):
 # --- ISHGA TUSHIRISH ---
 async def main():
     print("Bot ishga tushdi...")
+    
+    # ⚠️ MUHIM: Eski webhookni o'chirib tashlaymiz
+    await bot.delete_webhook(drop_pending_updates=True)
+    
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
