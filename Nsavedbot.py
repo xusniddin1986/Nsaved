@@ -23,9 +23,9 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 CAPTION_TEXT = "📥 @Nsaved_bot orqali yuklab olindi"
 
-# Ma'lumotlar bazasi vazifasini o'taydi (Restart bo'lguncha saqlaydi)
+# Ma'lumotlar bazasi vazifasini o'taydi
 users = set()
-user_details = {} # Foydalanuvchilarning @username'larini saqlash uchun
+user_details = {} 
 search_cache = {}
 
 # --- Yordamchi Funksiyalar ---
@@ -34,7 +34,6 @@ def is_subscribed(user_id):
     """Foydalanuvchi kanalga a'zo ekanligini tekshirish"""
     try:
         status = bot.get_chat_member(CHANNEL_ID, user_id).status
-        # member, administrator yoki creator bo'lsa True qaytaradi
         if status in ['member', 'administrator', 'creator']:
             return True
         else:
@@ -47,11 +46,8 @@ def register_user(message):
     """Foydalanuvchini ro'yxatga olish"""
     user_id = message.from_user.id
     users.add(user_id)
-    
     username = f"@{message.from_user.username}" if message.from_user.username else "Username yo'q"
     first_name = message.from_user.first_name
-    
-    # Ma'lumotni saqlash
     user_details[user_id] = f"{username} ({first_name})"
 
 def get_sub_markup():
@@ -85,11 +81,11 @@ def get_admin_menu():
     return markup
 
 # --- Buyruqlar (Commands) ---
+# MUHIM: Buyruqlar har doim obuna tekshiruvidan tepada turishi kerak!
 
 @bot.message_handler(commands=["start"])
 def start(message):
     register_user(message)
-    
     # Obunani tekshirish
     if not is_subscribed(message.from_user.id):
         bot.send_message(
@@ -109,10 +105,7 @@ def start(message):
 
 @bot.message_handler(commands=["help"])
 def help_command(message):
-    if not is_subscribed(message.from_user.id):
-        bot.send_message(message.chat.id, "⚠️ Avval kanalga a'zo bo'ling!", reply_markup=get_sub_markup())
-        return
-
+    # Help har doim ishlashi uchun obuna tekshiruvini olib tashladik
     help_text = (
         "🔥 @Nsaved_Bot yordam bo'limi:\n\n"
         "• Instagram - post va Reels havola yuboring;\n"
@@ -122,6 +115,17 @@ def help_command(message):
         "🚀 Yuklab olmoqchi bo'lgan videoga havolani yuboring!\n"
     )
     bot.send_message(message.chat.id, help_text, parse_mode="Markdown")
+
+@bot.message_handler(commands=["join"])
+def join_command(message):
+    # Join buyrug'i kanalga o'tish tugmasini chiqaradi
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("📢 Kanalga o'tish", url="https://t.me/aclubnc"))
+    bot.send_message(
+        message.chat.id,
+        "Bot yangiliklari va yangi funksiyalardan xabardor bo'lish uchun kanalimizga qo'shiling:",
+        reply_markup=markup
+    )
 
 @bot.message_handler(commands=["about"])
 def about_command(message):
@@ -165,7 +169,6 @@ def handle_admin_buttons(message):
             res_text = "👤 **Foydalanuvchilar ro'yxati:**\n\n"
             for i, (u_id, info) in enumerate(user_details.items(), 1):
                 res_text += f"{i}. {info} (ID: `{u_id}`)\n"
-                # Telegram xabar limiti (4096 belgi)
                 if len(res_text) > 3800:
                     bot.send_message(message.chat.id, res_text, parse_mode="Markdown")
                     res_text = ""
@@ -205,7 +208,6 @@ def send_broadcast(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call: CallbackQuery):
-    # Obunani tekshirish callback'i
     if call.data == "check_subscription":
         if is_subscribed(call.from_user.id):
             bot.answer_callback_query(call.id, "✅ Rahmat! Obuna tasdiqlandi.")
@@ -217,7 +219,6 @@ def handle_callbacks(call: CallbackQuery):
         else:
             bot.answer_callback_query(call.id, "❌ Siz hali kanalga a'zo bo'lmadingiz!", show_alert=True)
 
-    # Avtomatik qidiruv callback'i
     elif call.data.startswith("auto_search:"):
         video_name = call.data.split(":")[1]
         search_music(call.message, query=video_name)
