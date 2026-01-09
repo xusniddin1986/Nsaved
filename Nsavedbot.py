@@ -12,23 +12,15 @@ app = Flask(__name__)
 BOT_TOKEN = "8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY"
 bot = telebot.TeleBot(BOT_TOKEN)
 
-CHANNEL_USERNAME = "@aclubnc"
-CAPTION_TEXT = (
-    "Telegramda video yuklab beradigan eng zo'r botlardan biri 🚀 | @Nsaved_bot"
-)
+CAPTION_TEXT = "📥 @Nsaved_bot orqali yuklab olindi"
 
-# ---------------- ADMIN ID VA STATISTIKA -----------------
-ADMIN_ID = 5767267885
-users = set()
-total_downloads = 0
-today_downloads = 0
+# Qidiruv natijalarini vaqtinchalik saqlash uchun kesh
+search_cache = {}
 
-# ---------------- HOME PAGE -----------------
 @app.route("/")
 def home():
-    return "Bot ishlayapti! 🔥"
+    return "Bot faol! 🔥"
 
-# ---------------- TELEGRAM WEBHOOK ENDPOINT -----------------
 @app.route("/telegram_webhook", methods=["POST"])
 def telegram_webhook():
     json_str = request.get_data().decode("utf-8")
@@ -36,130 +28,138 @@ def telegram_webhook():
     bot.process_new_updates([update])
     return "ok", 200
 
-# ---------------- /start handler -----------------
+# --- Start buyrug'i ---
 @bot.message_handler(commands=["start"])
 def start(message):
-    user_id = message.from_user.id
-    users.add(user_id)
-    bot.send_message(
-        message.chat.id,
-        "Assalomu alaykum! 🚀\n\nInstagram yoki YouTube havolasini yuboring, men uni video formatida yuklab beraman."
-    )
+    bot.send_message(message.chat.id, "Xush kelibsiz! 🚀\nInstagram yoki YouTube havolasini yuboring yoki musiqa nomini yozing.")
 
-# ---------------- /help handler -----------------
-@bot.message_handler(commands=["help"])
-def help_command(message):
-    help_text = (
-        "🛠️ Bot yordamchisi\n\n"
-        "/start - Botni ishga tushurish\n"
-        "/help - Yordam ma'lumotlari\n"
-        "/about - Bot haqida ma'lumot\n"
-        "/admin - Admin paneli (faqat admin)\n\n"
-        "Instagram va YouTube'dan video linkini yuborib videoni yuklab olishingiz mumkin 🚀\n"
-        "Bog‘lanish: @thexamidovs"
-    )
-    bot.send_message(message.chat.id, help_text)
-
-# ---------------- /about handler -----------------
-@bot.message_handler(commands=["about"])
-def about_command(message):
-    about_text = (
-        "🤖 Nsaved Bot\n\n"
-        "🔥 Assalomu alaykum! @Nsaved_bot ga xush kelibsiz.\n\n"
-        "Bot orqali siz quyidagilarni yuklab olishingiz mumkin:\n"
-        "• Instagram postlar & Reels\n"
-        "• YouTube videolar\n"
-        "• Stories (audio bilan)\n\n"
-        "📢 Telegram kanalimiz: @aclubnc\n"
-        "👨‍💻 Bot-Yaratuvchisi: Nabiyulloh.X\n"
-    )
-    bot.send_message(message.chat.id, about_text)
-
-# ---------------- ADMIN PANEL -----------------
-@bot.message_handler(commands=["admin", "panel"])
-def admin_panel(message):
-    if message.from_user.id != ADMIN_ID:
-        return bot.send_message(message.chat.id, "❌ Siz admin emassiz!")
-
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("📊 Umumiy statistika", callback_data="total_stats"))
-    kb.add(InlineKeyboardButton("📅 Bugungi statistika", callback_data="today_stats"))
-    kb.add(InlineKeyboardButton("👤 Foydalanuvchilar ro‘yxati", callback_data="user_list"))
-    
-    bot.send_message(message.chat.id, "🛠 Admin Panel", reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda call: call.data in ["total_stats", "today_stats", "user_list"])
-def admin_stats(call):
-    if call.from_user.id != ADMIN_ID:
-        return bot.answer_callback_query(call.id, "⛔ Ruxsat yo‘q!", show_alert=True)
-
-    if call.data == "total_stats":
-        text = f"📊 Umumiy statistika\n\n👤 Foydalanuvchilar: {len(users)} ta\n📥 Yuklangan videolar: {total_downloads} ta"
-        bot.send_message(call.message.chat.id, text)
-    elif call.data == "today_stats":
-        text = f"📅 Bugungi statistika\n\n📥 Bugun yuklangan videolar: {today_downloads} ta"
-        bot.send_message(call.message.chat.id, text)
-    elif call.data == "user_list":
-        if not users:
-            bot.send_message(call.message.chat.id, "👤 Foydalanuvchilar yo‘q.")
-        else:
-            text = "👤 Foydalanuvchilar ID ro‘yxati:\n\n" + "\n".join([str(u) for u in list(users)[:50]])
-            bot.send_message(call.message.chat.id, text)
-
-# ---------------- VIDEO DOWNLOAD HANDLER (INSTAGRAM + YOUTUBE) -----------------
+# --- Asosiy Handler ---
 @bot.message_handler(func=lambda m: True)
-def download_video_all(message):
-    global total_downloads, today_downloads
+def handle_all_messages(message):
     url = message.text.strip()
-    users.add(message.from_user.id)
+    
+    # Agar havola bo'lsa video yuklaydi
+    if "instagram.com" in url or "youtube.com" in url or "youtu.be" in url:
+        download_video(message, url)
+    # Agar havola bo'lmasa musiqa qidiradi
+    else:
+        search_music(message)
 
-    # Instagram va YouTube havolalarini aniqlash
-    is_insta = "instagram.com" in url
-    is_yt = "youtube.com" in url or "youtu.be" in url
-
-    if not is_insta and not is_yt:
-        bot.reply_to(message, "❌ Iltimos, faqat Instagram yoki YouTube havolasini yuboring!")
-        return
-
-    loading_msg = bot.send_message(message.chat.id, "⏳ Video tayyorlanmoqda...")
+# --- Video yuklash funksiyasi ---
+def download_video(message, url):
+    status = bot.send_message(message.chat.id, "⏳ Video tayyorlanmoqda...")
     filename = f"{uuid.uuid4()}.mp4"
     
     ydl_opts = {
         "format": "best[ext=mp4]/best",
         "outtmpl": filename,
         "quiet": True,
-        "cookiefile": "cookies.txt",  # Mana shu qator botga kukini ulaydi
+        "cookiefile": "cookies.txt",
         "extractor_args": {"youtube": ["player_client=default"]}
     }
-
+    
     try:
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-
-        bot.delete_message(message.chat.id, loading_msg.message_id)
-
+        
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton("📥 Qo'shiqni yuklab olish", callback_data="search_mode"))
+        
         with open(filename, "rb") as video:
-            bot.send_video(message.chat.id, video, caption=CAPTION_TEXT)
-
-        total_downloads += 1
-        today_downloads += 1
+            bot.send_video(message.chat.id, video, caption=CAPTION_TEXT, reply_markup=markup)
+        
+        bot.delete_message(message.chat.id, status.message_id)
         os.remove(filename)
+    except:
+        bot.edit_message_text("❌ Xatolik! Havola noto'g'ri yoki video juda katta.", message.chat.id, status.message_id)
 
-    except Exception as e:
-        bot.edit_message_text(
-            chat_id=message.chat.id,
-            message_id=loading_msg.message_id,
-            text=f"❌ Xatolik yuz berdi yoki video juda katta.\nLinkni tekshirib qayta yuboring.",
-        )
-        if os.path.exists(filename):
-            os.remove(filename)
+# --- Musiqa qidirish (1-10 talik ro'yxat) ---
+def search_music(message):
+    query = message.text
+    status = bot.send_message(message.chat.id, f"🔍 '{query}' bo'yicha qidirilmoqda...")
+    
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "quiet": True,
+        "extract_flat": True,
+        "cookiefile": "cookies.txt"
+    }
+    
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            # YouTube'dan 10 ta natija qidirish
+            info = ydl.extract_info(f"ytsearch10:{query}", download=False)
+            entries = info.get("entries", [])
+        
+        if not entries:
+            return bot.edit_message_text("😔 Hech narsa topilmadi.", message.chat.id, status.message_id)
+        
+        search_cache[message.from_user.id] = entries
+        
+        res_text = "<b>🔍 Qidiruv natijalari:</b>\n\n"
+        markup = InlineKeyboardMarkup()
+        
+        for i, entry in enumerate(entries):
+            res_text += f"{i+1}. {entry['title']}\n"
+            markup.add(InlineKeyboardButton(f"{i+1}", callback_data=f"mus_{i}"))
+        
+        bot.edit_message_text(res_text, message.chat.id, status.message_id, parse_mode="HTML", reply_markup=markup)
+        
+    except:
+        bot.edit_message_text("❌ Qidiruvda xatolik yuz berdi.", message.chat.id, status.message_id)
 
-# ---------------- WEBHOOK -----------------
+# --- Callback Handler (Tugmalar uchun) ---
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callbacks(call: CallbackQuery):
+    if call.data == "search_mode":
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "🎵 Musiqa nomini yozib yuboring:")
+    
+    elif call.data.startswith("mus_"):
+        idx = int(call.data.split("_")[1])
+        user_id = call.from_user.id
+        
+        if user_id not in search_cache:
+            return bot.answer_callback_query(call.id, "Eski qidiruv! Iltimos qaytadan qidiring.", show_alert=True)
+        
+        video_info = search_cache[user_id][idx]
+        download_selected_music(call.message, video_info['url'])
+
+# --- Tanlangan musiqani MP3 qilib yuklash ---
+def download_selected_music(message, url):
+    status = bot.send_message(message.chat.id, "⏳ Musiqa yuklanmoqda...")
+    filename = f"{uuid.uuid4()}"
+    
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": f"{filename}.%(ext)s",
+        "quiet": True,
+        "cookiefile": "cookies.txt",
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "192",
+        }],
+    }
+    
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            real_file = f"{filename}.mp3"
+        
+        with open(real_file, "rb") as f:
+            bot.send_audio(message.chat.id, f, caption=CAPTION_TEXT, title=info.get('title'))
+        
+        bot.delete_message(message.chat.id, status.message_id)
+        os.remove(real_file)
+    except:
+        bot.edit_message_text("❌ Musiqani yuklashda xatolik.", message.chat.id, status.message_id)
+
+# --- Webhook ---
 WEBHOOK_URL = "https://nsaved.onrender.com/telegram_webhook"
 bot.remove_webhook()
 bot.set_webhook(url=WEBHOOK_URL)
 
-# ---------------- RUN FLASK -----------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
