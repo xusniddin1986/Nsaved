@@ -91,7 +91,7 @@ def start(message):
         bot.send_message(
             message.chat.id,
             f"🔥 Assalomu alaykum! @Nsaved_Bot ga xush kelibsiz.\n\n"
-            f"Botdan foydalanish uchun {CHANNEL_ID} kanaliga a'zo bo'lishingiz kerak!",
+            f"Botdan foydalanish uchun {CHANNEL_ID} kanaliga obuna bo'lishingiz kerak!",
             reply_markup=get_sub_markup()
         )
         return
@@ -123,7 +123,7 @@ def join_command(message):
     markup.add(InlineKeyboardButton("📢 Kanalga o'tish", url="https://t.me/aclubnc"))
     bot.send_message(
         message.chat.id,
-        "Bot yangiliklari va yangi funksiyalardan xabardor bo'lish uchun kanalimizga qo'shiling:",
+        "Bot ishlashi uchun kanalga a'zo bo'ling:",
         reply_markup=markup
     )
 
@@ -135,7 +135,7 @@ def about_command(message):
         "Bu bot ijtimoiy tarmoqlardan video va musiqalarni yuklab beradi.\n"
         "Agar botda biror muammo bo'lsa: @thexamidovs\n"
         "Bizning kanal: @aclubnc\n"
-        "Dasturchi: Nabiyulloh.X\n\n"
+        "Dasturchi: Nabiyulloh.X\n"
         "© 2026 @Nsaved_Bot"
     )
     bot.send_message(message.chat.id, about_text, parse_mode="Markdown")
