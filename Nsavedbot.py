@@ -179,13 +179,29 @@ async def post_init(application: Application):
 
 def main():
     init_db()
-    Thread(target=run_flask).start()
-    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(cb_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_msg))
-    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_msg))
-    app.run_polling(drop_pending_updates=True)
+    
+    # 1. Flaskni o'ta sodda usulda alohida ishga tushiramiz
+    port = int(os.environ.get("PORT", 5000))
+    def start_flask():
+        server.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    
+    Thread(target=start_flask, daemon=True).start()
+    print(f"✅ Flask server {port}-portda tayyor.")
+
+    # 2. Botni qurish (Polling rejimida)
+    # Bu qism Telegramga ulanishni ta'minlaydi
+    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+
+    # Handlerlar
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(cb_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_msg))
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_msg))
+
+    print("🚀 Bot Pollingni boshladi... Telegramni tekshiring!")
+    
+    # run_polling ishga tushganda bot Telegram bilan bog'lanadi
+    application.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
     main()
