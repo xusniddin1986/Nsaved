@@ -7,7 +7,7 @@ from youtubesearchpython import VideosSearch
 from dotenv import load_dotenv
 from os.path import join, dirname
 
-dotenv_path = join(dirname(__file__), '.env')
+dotenv_path = join(dirname(__file__), 'sample.env')
 load_dotenv(dotenv_path)
 
 TOKEN = os.environ.get("8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY")
