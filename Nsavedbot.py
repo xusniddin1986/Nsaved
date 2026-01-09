@@ -1,226 +1,191 @@
-import os
-import sqlite3
-import asyncio
-import yt_dlp
-import logging
+import os, sqlite3, asyncio, yt_dlp, logging
 from datetime import datetime
-from flask import Flask, request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from flask import Flask
+from threading import Thread
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from telegram.constants import ChatMemberStatus
-
-# --- FLASK SERVER (Render o'chirib qo'ymasligi uchun) ---
-app = Flask(__name__)
-
-@app.route('/')
-def index():
-    return "Bot is running!"
-
-@app.route('/webhook', methods=['POST'])
-async def webhook():
-    if request.method == "POST":
-        update = Update.de_json(request.get_json(force=True), bot_app.bot)
-        await bot_app.process_update(update)
-    return "OK"
-
-# --- LOGGING ---
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # --- KONFIGURATSIYA ---
 BOT_TOKEN = '8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY'
 ADMIN_ID = 5767267885
 DB_NAME = "bot_manager.db"
-URL = "https://nsaved.onrender.com" # O'zingizni Render URLingizni yozasiz
 
-# --- MA'LUMOTLAR BAZASI ---
+# --- FLASK SERVER (Render uchun) ---
+server = Flask(__name__)
+@server.route('/')
+def home(): return "Bot is Alive!"
+
+def run_flask():
+    server.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
+# --- BAZA ---
 def init_db():
     conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT, name TEXT, joined_at TEXT, is_banned INTEGER DEFAULT 0)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS channels (id TEXT PRIMARY KEY)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS admins (id INTEGER PRIMARY KEY)''')
-    cursor.execute("INSERT OR IGNORE INTO admins (id) VALUES (?)", (ADMIN_ID,))
-    cursor.execute("INSERT OR IGNORE INTO channels (id) VALUES (?)", ("@aclubnc",))
+    cur = conn.cursor()
+    cur.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT, name TEXT, joined_at TEXT, is_banned INTEGER DEFAULT 0)")
+    cur.execute("CREATE TABLE IF NOT EXISTS channels (id TEXT PRIMARY KEY)")
+    cur.execute("INSERT OR IGNORE INTO channels (id) VALUES ('@aclubnc')")
     conn.commit()
     conn.close()
 
-init_db()
-
-# --- ADMIN TEKSHIRUVI ---
-def is_admin(user_id):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM admins WHERE id=?", (user_id,))
-    res = cursor.fetchone()
-    conn.close()
-    return res is not None
-
-# --- KEYBOARDLAR ---
-def get_admin_keyboard():
+# --- KEYBOARDS ---
+def admin_kb():
     return ReplyKeyboardMarkup([
-        [KeyboardButton("📢 Kanallarni sozlash")],
-        [KeyboardButton("📊 Statistika"), KeyboardButton("✉️ Xabar Yuborish")],
-        [KeyboardButton("👤 Userlar ID/Username"), KeyboardButton("🚫 Bloklash/Ochish")],
-        [KeyboardButton("👑 Adminlar"), KeyboardButton("🤖 Bot holati")]
+        ["📢 Kanallarni sozlash"],
+        ["📊 Statistika", "✉️ Xabar Yuborish"],
+        ["👤 Userlar ID/Username", "🚫 Bloklash/Ochish"],
+        ["👑 Adminlar", "🤖 Bot holati"]
     ], resize_keyboard=True)
 
-# --- OBUNA TEKSHIRISH ---
-async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- FUNKSIYALAR ---
+async def check_sub(update, context):
     user_id = update.effective_user.id
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM channels")
-    channels = cursor.fetchall()
-    conn.close()
-    unsub = []
+    conn = sqlite3.connect(DB_NAME); cur = conn.cursor()
+    cur.execute("SELECT id FROM channels"); channels = cur.fetchall(); conn.close()
     for ch in channels:
         try:
-            member = await context.bot.get_chat_member(chat_id=ch[0], user_id=user_id)
-            if member.status in [ChatMemberStatus.LEFT, ChatMemberStatus.KICKED]:
-                unsub.append(ch[0])
-        except:
-            unsub.append(ch[0])
-    return unsub
+            m = await context.bot.get_chat_member(ch[0], user_id)
+            if m.status in [ChatMemberStatus.LEFT, ChatMemberStatus.KICKED]: return False
+        except: return False
+    return True
 
-# --- START ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def download_media(url, mode='video'):
+    cookie_path = 'cookies.txt' if os.path.exists('cookies.txt') else None
+    opts = {
+        'format': 'best[ext=mp4]/best' if mode == 'video' else 'bestaudio/best',
+        'outtmpl': f'file_%(id)s.%(ext)s',
+        'cookiefile': cookie_path,
+        'quiet': True,
+        'nocheckcertificate': True
+    }
+    if mode == 'audio':
+        opts['postprocessors'] = [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '192'}]
+    
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = await asyncio.to_thread(ydl.extract_info, url, download=True)
+        path = ydl.prepare_filename(info).replace('.webm', '.mp3').replace('.m4a', '.mp3')
+        return path, info.get('title', 'Media')
+
+# --- HANDLERLAR ---
+async def start(update, context):
     user = update.effective_user
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR IGNORE INTO users (id, username, name, joined_at) VALUES (?, ?, ?, ?)",
-                   (user.id, user.username, user.first_name, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-    conn.commit()
-    conn.close()
+    conn = sqlite3.connect(DB_NAME); cur = conn.cursor()
+    cur.execute("INSERT OR IGNORE INTO users (id, username, name, joined_at) VALUES (?, ?, ?, ?)", 
+                (user.id, user.username, user.first_name, datetime.now().strftime("%Y-%m-%d")))
+    conn.commit(); conn.close()
 
-    unsub = await check_subscription(update, context)
-    if unsub:
-        keyboard = [[InlineKeyboardButton(f"Obuna bo'lish {ch}", url=f"https://t.me/{ch[1:]}")] for ch in unsub]
-        keyboard.append([InlineKeyboardButton("Tasdiqlash ✅", callback_data="check_sub")])
-        await update.message.reply_text("👋 Salom! Botdan foydalanish uchun kanallarga obuna bo'ling!", reply_markup=InlineKeyboardMarkup(keyboard))
-        return
+    if not await check_sub(update, context):
+        btn = [[InlineKeyboardButton("A'zo bo'lish 📢", url="https://t.me/aclubnc")], [InlineKeyboardButton("Tasdiqlash ✅", callback_data="recheck")]]
+        return await update.message.reply_text("👋 Salom! Botdan foydalanish uchun kanalga a'zo bo'ling!", reply_markup=InlineKeyboardMarkup(btn))
 
-    if is_admin(user.id):
-        await update.message.reply_text("🛡 Admin panelga xush kelibsiz!", reply_markup=get_admin_keyboard())
+    if user.id == ADMIN_ID:
+        await update.message.reply_text("🛡 Admin panelga xush kelibsiz!", reply_markup=admin_kb())
     else:
         await update.message.reply_text("✅ Bot tayyor! Link yuboring yoki musiqa nomini yozing.")
 
-# --- MEDIA YUKLASH (ASOSIY QISM) ---
-async def process_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text
-    
-    # Broadcast status
-    if context.user_data.get('state') == 'BROADCAST' and is_admin(user_id):
-        await broadcast_manager(update, context)
-        return
+    if not await check_sub(update, context): return
 
-    if not await check_subscription(update, context):
-        return await start(update, context)
+    # Admin Panel Funksiyalari
+    if user_id == ADMIN_ID:
+        if text == "📊 Statistika":
+            conn = sqlite3.connect(DB_NAME); cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM users"); count = cur.fetchone()[0]
+            conn.close()
+            return await update.message.reply_text(f"📊 **Bot Statistikasi:**\n\n👤 Jami userlar: {count}", parse_mode="Markdown")
 
-    if any(x in text for x in ["instagram.com", "youtube.com", "youtu.be"]):
-        status = await update.message.reply_text("📥 Tahlil qilinmoqda...")
+        if text == "✉️ Xabar Yuborish":
+            context.user_data['state'] = 'SEND'
+            return await update.message.reply_text("📢 Reklama xabarini yuboring (Rasm, Video yoki Matn):", reply_markup=ReplyKeyboardRemove())
+
+        if text == "👤 Userlar ID/Username":
+            conn = sqlite3.connect(DB_NAME); cur = conn.cursor()
+            cur.execute("SELECT id, username FROM users ORDER BY id DESC LIMIT 10"); users = cur.fetchall(); conn.close()
+            msg = "👤 **Oxirgi 10 ta user:**\n\n"
+            for u in users: msg += f"🆔 `{u[0]}` | @{u[1]}\n"
+            return await update.message.reply_text(msg, parse_mode="Markdown")
+
+        if text == "🤖 Bot holati":
+            return await update.message.reply_text("✅ Bot hozirda Render.com serverida faol ishlamoqda.\nFFmpeg: O'rnatilgan")
+
+    # Reklama tarqatish (Broadcast)
+    if context.user_data.get('state') == 'SEND' and user_id == ADMIN_ID:
+        conn = sqlite3.connect(DB_NAME); cur = conn.cursor()
+        cur.execute("SELECT id FROM users"); users = cur.fetchall(); conn.close()
+        count = 0
+        for u in users:
+            try:
+                await context.bot.copy_message(u[0], user_id, update.message.message_id)
+                count += 1
+                await asyncio.sleep(0.05)
+            except: pass
+        context.user_data['state'] = None
+        return await update.message.reply_text(f"✅ Xabar {count} kishiga yuborildi!", reply_markup=admin_kb())
+
+    # Media Yuklash
+    if "instagram.com" in text or "youtube.com" in text or "youtu.be" in text:
+        m = await update.message.reply_text("Tayyorlanmoqda... ⏳")
         try:
-            path = f'vid_{user_id}.mp4'
-            ydl_opts = {'format': 'best[ext=mp4]/best', 'outtmpl': path, 'quiet': True}
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                await asyncio.to_thread(ydl.extract_info, text, download=True)
-            
-            btn = [[InlineKeyboardButton("📥 MP3 yuklab olish", callback_data=f"mp3_{text}")]]
-            await update.message.reply_video(video=open(path, 'rb'), caption="📥 @NsavedBot orqali yuklab olindi", reply_markup=InlineKeyboardMarkup(btn))
-            os.remove(path)
-            await status.delete()
-        except:
-            await status.edit_text("❌ Xato: Link noto'g'ri yoki hajm juda katta.")
+            path, title = await download_media(text, 'video')
+            btn = [[InlineKeyboardButton("📥 Qo'shiqni yuklab olish (MP3)", callback_data=f"mp3_{text}")]]
+            await update.message.reply_video(open(path, 'rb'), caption=f"📥 @NsavedBot orqali yuklab olindi", reply_markup=InlineKeyboardMarkup(btn))
+            os.remove(path); await m.delete()
+        except: await m.edit_text("❌ Xatolik yuz berdi!")
+
     else:
-        # Musiqa qidirish
-        status = await update.message.reply_text("🔎 Qidirilmoqda...")
+        m = await update.message.reply_text("🔎 Qidirilmoqda...")
         try:
-            with yt_dlp.YoutubeDL({'format': 'bestaudio', 'quiet': True}) as ydl:
-                res = await asyncio.to_thread(ydl.extract_info, f"ytsearch5:{text}", download=False)
-                entries = res['entries']
-            
-            if not entries: return await status.edit_text("Topilmadi.")
-            
+            with yt_dlp.YoutubeDL({'quiet':True}) as ydl:
+                res = await asyncio.to_thread(ydl.extract_info, f"ytsearch10:{text}", download=False)
             kb = []
-            for i, ent in enumerate(entries, 1):
-                kb.append([InlineKeyboardButton(f"{i}. {ent['title'][:50]}", callback_data=f"dl_at_{ent['id']}")])
+            for i, ent in enumerate(res['entries'], 1):
+                kb.append([InlineKeyboardButton(f"{i}", callback_data=f"dl_{ent['id']}")])
             
-            await status.delete()
-            await update.message.reply_text("🎵 Tanlang:", reply_markup=InlineKeyboardMarkup(kb))
-        except: await status.edit_text("Xato!")
+            res_text = "🎵 **Topilgan musiqalar:**\n\n"
+            for i, ent in enumerate(res['entries'], 1): res_text += f"{i}. {ent['title'][:60]}\n"
+            
+            await m.delete()
+            await update.message.reply_text(res_text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+        except: await m.edit_text("😕 Hech narsa topilmadi.")
 
-# --- CALLBACK ---
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cb_handler(update, context):
     query = update.callback_query
     data = query.data
     await query.answer()
 
-    if data == "check_sub":
-        if not await check_subscription(update, context):
+    if data == "recheck":
+        if await check_sub(update, context):
             await query.message.delete()
-            await query.message.reply_text("✅ Obuna tasdiqlandi!")
-        else:
-            await query.answer("❌ Obuna bo'lmadingiz!", show_alert=True)
-
-    if data.startswith("mp3_") or data.startswith("dl_at_"):
-        url = data.replace("mp3_", "") if "mp3_" in data else f"https://youtube.com/watch?v={data.replace('dl_at_', '')}"
+            await query.message.reply_text("✅ Tasdiqlandi! Endi botdan foydalanishingiz mumkin.")
+    
+    elif data.startswith(("mp3_", "dl_")):
+        url = data[4:] if "mp3_" in data else f"https://youtube.com/watch?v={data[3:]}"
         m = await query.message.reply_text("🎧 MP3 tayyorlanmoqda...")
         try:
-            path = f"aud_{query.from_user.id}.mp3"
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'outtmpl': path.replace('.mp3', ''),
-                'postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '192'}],
-                'quiet': True
-            }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = await asyncio.to_thread(ydl.extract_info, url, download=True)
-            
-            await query.message.reply_audio(audio=open(path, 'rb'), caption="@MsavedBot")
+            path, title = await download_media(url, 'audio')
+            await query.message.reply_audio(audio=open(path, 'rb'), caption="@MsavedBot orqali yuklab olindi!")
             os.remove(path); await m.delete()
-        except: await m.edit_text("Xato!")
+        except: await m.edit_text("❌ Yuklashda xatolik!")
 
-# --- BROADCAST ---
-async def broadcast_manager(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    conn = sqlite3.connect(DB_NAME); cur = conn.cursor()
-    cur.execute("SELECT id FROM users"); users = cur.fetchall(); conn.close()
-    await update.message.reply_text("🚀 Yuborilmoqda...")
-    for u in users:
-        try:
-            await context.bot.copy_message(u[0], update.message.chat_id, update.message.message_id)
-            await asyncio.sleep(0.05)
-        except: pass
-    context.user_data['state'] = None
-    await update.message.reply_text("✅ Tugadi!", reply_markup=get_admin_keyboard())
+async def post_init(application: Application):
+    # Bot menyusini o'rnatish
+    await application.bot.set_my_commands([
+        BotCommand("start", "Botni qayta ishga tushirish"),
+        BotCommand("help", "Yordam")
+    ])
 
-# --- ADMIN FUNCTIONS (Statistika va b.q) ---
-async def admin_functions(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id): return
-    text = update.message.text
-    if text == "📊 Statistika":
-        conn = sqlite3.connect(DB_NAME); cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM users"); total = cur.fetchone()[0]; conn.close()
-        await update.message.reply_text(f"👤 Userlar: {total}")
-    elif text == "✉️ Xabar Yuborish":
-        context.user_data['state'] = 'BROADCAST'
-        await update.message.reply_text("Xabarni yuboring:", reply_markup=ReplyKeyboardRemove())
-
-# --- MAIN ---
-bot_app = Application.builder().token(BOT_TOKEN).build()
-
-def start_bot():
-    bot_app.add_handler(CommandHandler("start", start))
-    bot_app.add_handler(MessageHandler(filters.Regex('^(📊 Statistika|👤 Userlar ID/Username|✉️ Xabar Yuborish|🚫 Bloklash/Ochish|🤖 Bot holati|📢 Kanallarni sozlash)$'), admin_functions))
-    bot_app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, process_media))
-    bot_app.add_handler(CallbackQueryHandler(callback_handler))
-    
-    # Renderda polling emas, Webhook tavsiya qilinadi, lekin bepulda pooling ham ishlaydi agar Flask bo'lsa
-    # Pooling ishlatamiz, lekin Flask uni uyg'oq tutadi
-    bot_app.run_polling()
+def main():
+    init_db()
+    Thread(target=run_flask).start()
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(cb_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_msg))
+    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_msg))
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
-    from threading import Thread
-    init_db()
-    # Flaskni alohida oqimda ishga tushiramiz
-    Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))).start()
-    start_bot()
+    main()
