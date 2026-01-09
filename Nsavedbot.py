@@ -1,93 +1,96 @@
 import os
 import telebot
 import yt_dlp
-from flask import Flask, request
 
 # --- 1. SOZLAMALAR ---
-TOKEN = "8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY"
+TOKEN = "BOT_TOKENINI_SHU_YERGA_QO'YING"
 bot = telebot.TeleBot(TOKEN)
-app = Flask(__name__)
 
-# Fayllar yo'lini aniqlash
+# Fayllar yo'lini aniqlash (Lokal papka)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 YT_COOKIES = os.path.join(BASE_DIR, 'cookies.txt')
-INSTA_COOKIES = os.path.join(BASE_DIR, 'instagramcookies.txt')
 DOWNLOAD_DIR = os.path.join(BASE_DIR, 'downloads')
 
 if not os.path.exists(DOWNLOAD_DIR):
     os.makedirs(DOWNLOAD_DIR)
 
 # --- 2. YUKLASH FUNKSIYASI ---
-def download_video(url, platform='youtube'):
-    # Platformaga qarab cookies tanlash
-    cookie_file = YT_COOKIES if platform == 'youtube' else INSTA_COOKIES
-    
-    # Agar cookies fayli mavjud bo'lmasa, None bo'ladi
-    if not os.path.exists(cookie_file):
-        cookie_file = None
-
+def download_media(url_or_search, mode='video'):
     ydl_opts = {
-        'format': 'best',
+        'cookiefile': YT_COOKIES if os.path.exists(YT_COOKIES) else None,
         'outtmpl': f'{DOWNLOAD_DIR}/%(title)s.%(ext)s',
-        'cookiefile': cookie_file,
-        'merge_output_format': 'mp4',
         'noplaylist': True,
+        'quiet': False, # Noutbuk konsolida jarayonni ko'rib turish uchun
     }
+
+    if mode == 'audio':
+        ydl_opts.update({
+            'format': 'bestaudio/best',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+        })
+        if not url_or_search.startswith('http'):
+            url_or_search = f"ytsearch1:{url_or_search}"
+    else:
+        ydl_opts.update({'format': 'best'})
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+            info = ydl.extract_info(url_or_search, download=True)
+            if 'entries' in info:
+                info = info['entries'][0]
+            
             file_path = ydl.prepare_filename(info)
-            return file_path
+            if mode == 'audio':
+                file_path = os.path.splitext(file_path)[0] + '.mp3'
+            
+            return file_path, info.get('title', 'Unknown')
     except Exception as e:
         print(f"Xatolik yuz berdi: {e}")
-        return None
+        return None, None
 
-# --- 3. TELEGRAM HANDLERLAR ---
+# --- 3. HANDLERLAR ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "Salom! YouTube yoki Instagram linkini yuboring, men uni yuklab beraman.")
+    bot.reply_to(message, "Salom! Men noutbukda ishlayapman.\nVideo linkini yuboring yoki musiqa nomini yozing.")
 
 @bot.message_handler(func=lambda m: True)
-def handle_message(message):
-    url = message.text.strip()
+def handle_all(message):
+    text = message.text.strip()
     
-    # Linkni tekshirish
-    if "youtube.com" in url or "youtu.be" in url:
-        platform = 'youtube'
-    elif "instagram.com" in url:
-        platform = 'instagram'
+    # Platformalarni aniqlash
+    is_video_link = any(x in text for x in ["instagram.com", "youtube.com", "youtu.be", "tiktok.com"])
+
+    if is_video_link:
+        msg = bot.reply_to(message, "🎬 Video yuklanmoqda...")
+        file_path, title = download_media(text, mode='video')
+        mode_type = 'video'
+    elif not text.startswith('http'):
+        msg = bot.reply_to(message, f"🔍 '{text}' qidirilmoqda...")
+        file_path, title = download_media(text, mode='audio')
+        mode_type = 'audio'
     else:
-        bot.reply_to(message, "Hozircha faqat YouTube va Instagram linklarini qo'llab-quvvatlayman.")
+        bot.reply_to(message, "Noma'lum link yoki buyruq.")
         return
 
-    msg = bot.reply_to(message, "Yuklanmoqda, iltimos kuting...")
-    
-    video_path = download_video(url, platform)
-
-    if video_path and os.path.exists(video_path):
+    if file_path and os.path.exists(file_path):
         try:
-            with open(video_path, 'rb') as video:
-                bot.send_video(message.chat.id, video, caption="@nsavedbot orqali yuklandi")
-            os.remove(video_path) # Serverda joy band qilmasligi uchun o'chiramiz
+            with open(file_path, 'rb') as f:
+                if mode_type == 'video':
+                    bot.send_video(message.chat.id, f, caption=f"{title}\n@nsavedbot")
+                else:
+                    bot.send_audio(message.chat.id, f, title=title, caption="@nsavedbot")
+            os.remove(file_path) # Kompyuterda joy egallamasligi uchun
+            bot.delete_message(message.chat.id, msg.message_id)
         except Exception as e:
-            bot.reply_to(message, "Videoni yuborishda xatolik: Video hajmi juda katta bo'lishi mumkin.")
+            bot.reply_to(message, f"Yuborishda xato: {e}")
     else:
-        bot.edit_message_text("Kechirasiz, videoni yuklab bo'lmadi. Linkni tekshiring yoki keyinroq urinib ko'ring.", message.chat.id, msg.message_id)
+        bot.edit_message_text("❌ Yuklashda xatolik yuz berdi.", message.chat.id, msg.message_id)
 
-# --- 4. RENDER UCHUN WEBHOOK VA FLASK ---
-@app.route('/telegram_webhook', methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return ''
-    else:
-        return 'Forbidden', 403
-
+# --- 4. ISHGA TUSHIRISH (Polling) ---
 if __name__ == "__main__":
-    bot.remove_webhook()
-    # URLni o'z Render manzilingizga almashtiring
-    bot.set_webhook(url="https://nsaved.onrender.com/telegram_webhook")
-    app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 5000)))
+    print("Bot noutbukda ishga tushdi...")
+    bot.infinity_polling()
