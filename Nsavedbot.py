@@ -4,7 +4,7 @@ import yt_dlp
 from flask import Flask, request
 
 # --- 1. SOZLAMALAR ---
-TOKEN = "BOT_TOKEN_SHER_YERGA_YOZING"
+TOKEN = "8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY"
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
