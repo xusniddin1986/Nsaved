@@ -3,7 +3,7 @@ import telebot
 import yt_dlp
 
 # --- 1. SOZLAMALAR ---
-TOKEN = "BOT_TOKENINI_SHU_YERGA_QO'YING"
+TOKEN = "8501659003:AAGpaNmx-sJuCBbUSmXwPJEzElzWGBeZAWY"
 bot = telebot.TeleBot(TOKEN)
 
 # Fayllar yo'lini aniqlash (Lokal papka)
