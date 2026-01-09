@@ -90,7 +90,8 @@ def handle_all(message):
     else:
         bot.edit_message_text("❌ Yuklashda xatolik yuz berdi.", message.chat.id, msg.message_id)
 
-# --- 4. ISHGA TUSHIRISH (Polling) ---
 if __name__ == "__main__":
-    print("Bot noutbukda ishga tushdi...")
+    print("Webhook o'chirilmoqda...")
+    bot.remove_webhook() # Mana shu qator webhookni o'chiradi
+    print("Bot noutbukda ishga tushdi (Polling)...")
     bot.infinity_polling()
