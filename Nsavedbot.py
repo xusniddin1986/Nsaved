@@ -124,11 +124,11 @@ def download_video_all(message):
     loading_msg = bot.send_message(message.chat.id, "⏳ Video tayyorlanmoqda...")
     filename = f"{uuid.uuid4()}.mp4"
     
-    # 2-koddagi eng tezkor YouTubeDL sozlamalari
     ydl_opts = {
         "format": "best[ext=mp4]/best",
         "outtmpl": filename,
         "quiet": True,
+        "cookiefile": "cookies.txt",  # Mana shu qator botga kukini ulaydi
         "extractor_args": {"youtube": ["player_client=default"]}
     }
 
