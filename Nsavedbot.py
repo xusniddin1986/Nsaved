@@ -65,6 +65,17 @@ def handle_link(message):
         bot.edit_message_text(f"Xato yuz berdi: Link noto'g'ri yoki video yopiq bo'lishi mumkin.\n@Nsaved_Bot", chat_id, status_msg.message_id)
         print(f"Xatolik: {e}")
 
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run():
+    app.run(host='0.0.0.0', port=10000)
+
 if __name__ == "__main__":
+    # Veb-serverni alohida oqimda ishga tushirish (Render port topishi uchun)
+    t = threading.Thread(target=run)
+    t.start()
+    
     print("Bot muvaffaqiyatli ishga tushdi...")
     bot.polling(none_stop=True)
