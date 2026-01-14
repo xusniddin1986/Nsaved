@@ -24,3 +24,18 @@
 .youtube.com	TRUE	/	TRUE	1783864302	__Secure-YNID	15.YT=EBdAw8CkXKOS8i9jemuuU0JROp3I7lem3G-6sVDk4SprEQNLPa_YS5OKIlWJ0bRui2on4bYRRSDk_w_NLDQoLe_Dtrx3zlT3vH5a0URMsjc6g96MJkAQc5NpQKCSEYkGBAnqSBIn5SNEFQ_5LVcxJOazOwc1wf9sYIfrEqsCGCRF5NaskL1hR9hRIKUGqDojk_MM7m7IZu1mIg33VyiKgnlU9ghb0tcNdJM7pjYb1eWjQsA7u0u1Ee1Htg_vFl4Mqx1C5OYFUg9B9T61AvSw_oi0Sg1mh_9s2fJv9b6N7v3MQRjmQZ9VjcjATDwVkOXLz5mx4KBLs6S_sHpdSLNpcg
 .youtube.com	TRUE	/	TRUE	1783864303	__Secure-ROLLOUT_TOKEN	CKO4waCVmKT2cRCtruDBh4yQAxinjK7V1IiSAw%3D%3D
 .youtube.com	TRUE	/	TRUE	0	YSC	3fTkoInq1dA
+
+# Netscape HTTP Cookie File
+# https://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file! Do not edit.
+
+.instagram.com	TRUE	/	TRUE	1793528380	ig_did	D7866020-7222-48DF-B16B-F62FF5C7C67B
+.instagram.com	TRUE	/	TRUE	1802961225	csrftoken	uR3LAz_YcfcuKEjMHDAoTE
+.instagram.com	TRUE	/	TRUE	1796552381	datr	vN4FaU6coyQWdAOuAcnOR93s
+.instagram.com	TRUE	/	TRUE	1796552381	mid	aQXevAALAAHdqWYZ4PK5tJDd79a1
+.instagram.com	TRUE	/	TRUE	1796552381	ps_l	1
+.instagram.com	TRUE	/	TRUE	1796552381	ps_n	1
+.instagram.com	TRUE	/	TRUE	1799937192	sessionid	68256288671%3ArYP2YI8xKes1kS%3A23%3AAYgvQhAnWt7TkAeZopcX9SZqZon6rGgiNE8pBJPPGg
+.instagram.com	TRUE	/	TRUE	1776177225	ds_user_id	68256288671
+.instagram.com	TRUE	/	TRUE	1769006012	wd	1500x831
+.instagram.com	TRUE	/	TRUE	0	rur	"RVA\05468256288671\0541799937225:01fefd8d344c4564e6e0c08142b4d640b6ef49e592d509a8d03975431ca191b418453300"

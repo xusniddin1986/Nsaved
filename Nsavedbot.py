@@ -73,97 +73,106 @@ def admin_menu():
 
 broadcast_mode = False
 
-# --- Flask Routes ---
-@app.route("/")
-def home(): 
-    return "Bot is running! 🚀"
-
-@app.route("/telegram_webhook", methods=["POST"])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return ''
-    return 'Forbidden', 403
-
-# --- Handlers ---
+# --- Komandalar ---
 @bot.message_handler(commands=["start"])
 def start(message):
     add_user(message.from_user.id, message.from_user.username)
-    try:
-        member = bot.get_chat_member(CHANNEL_USERNAME, message.from_user.id)
-        if member.status in ["creator", "administrator", "member"]:
-            bot.send_message(message.chat.id, "Obuna tasdiqlandi ✅\nInstagram yoki YouTube link yuboring 🚀")
-        else: raise Exception()
-    except:
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("📢 Kanalga obuna bo'ling", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"))
-        markup.add(InlineKeyboardButton("✅ Obuna bo'ldim", callback_data="check"))
-        bot.send_message(message.chat.id, "Botdan foydalanish uchun kanalga a'zo bo'ling!", reply_markup=markup)
+    bot.send_message(message.chat.id, "Xush kelibsiz! Instagram yoki YouTube link yuboring 🚀\n\nYordam uchun /help bosing.")
 
-@bot.callback_query_handler(func=lambda call: call.data == "check")
-def check_callback(call):
-    try:
-        member = bot.get_chat_member(CHANNEL_USERNAME, call.from_user.id)
-        if member.status in ["creator", "administrator", "member"]:
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-            bot.send_message(call.message.chat.id, "Tayyor! Link yuboring 🚀")
-        else:
-            bot.answer_callback_query(call.id, "❌ Siz hali kanalga obuna bo'lmagansiz!", show_alert=True)
-    except:
-        bot.answer_callback_query(call.id, "❌ Xatolik yuz berdi.")
+@bot.message_handler(commands=["help"])
+def help_cmd(message):
+    text = "📖 **Botdan foydalanish qo'llanmasi:**\n\n1. Instagram/YouTube linkini nusxalang.\n2. Botga yuboring.\n3. Bir necha soniya kuting.\n\nSavollar bo'lsa: @thexamidovs"
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+@bot.message_handler(commands=["about"])
+def about_cmd(message):
+    bot.send_message(message.chat.id, "🤖 **Bot haqida:**\n\nBu bot ijtimoiy tarmoqlardan video yuklash uchun maxsus yaratilgan.\nVersiya: 2.5\nYaratuvchi: @thexamidovs")
+
+@bot.message_handler(commands=["join"])
+def join_cmd(message):
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("📢 Kanalga o'tish", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"))
+    bot.send_message(message.chat.id, f"Bizning rasmiy kanalimiz: {CHANNEL_USERNAME}\nObuna bo'lishni unutmang!", reply_markup=markup)
 
 @bot.message_handler(commands=["admin"])
 def admin_start(message):
     if message.from_user.id == ADMIN_ID:
-        bot.send_message(message.chat.id, "Admin panel:", reply_markup=admin_menu())
+        bot.send_message(message.chat.id, "Boshqaruv paneli ishga tushdi:", reply_markup=admin_menu())
 
+# --- Admin Paneli Mantiqi ---
 @bot.message_handler(func=lambda m: m.from_user.id == ADMIN_ID)
 def admin_logic(message):
     global broadcast_mode
+    
     if message.text == "📊 Statistika":
         u, d = get_stats()
-        bot.send_message(message.chat.id, f"👤 Userlar: {u}\n📥 Yuklashlar: {d}")
+        bot.send_message(message.chat.id, f"📊 **Statistika:**\n\n👤 Jami foydalanuvchilar: {u} ta\n📥 Jami yuklashlar: {d} ta", parse_mode="Markdown")
+
     elif message.text == "📩 Xabar Yuborish":
         broadcast_mode = True
-        bot.send_message(message.chat.id, "Xabarni yuboring:", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add("❌ Bekor qilish"))
-    elif message.text == "🤖 Bot holati":
-        bot.send_message(message.chat.id, "✅ Bot faol!")
+        bot.send_message(message.chat.id, "Xabaringizni yuboring (Rasm, Video, Matn...):", 
+                         reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add("❌ Bekor qilish"))
+
     elif message.text == "👤 Foydalanuvchilar":
         conn = sqlite3.connect("users.db")
         cursor = conn.cursor()
-        cursor.execute("SELECT id, username FROM users ORDER BY id DESC LIMIT 10")
+        cursor.execute("SELECT id, username, user_id FROM users ORDER BY id ASC")
         rows = cursor.fetchall()
-        txt = "Oxirgi 10 user:\n" + "\n".join([f"{r[0]}. {r[1]}" for r in rows])
-        bot.send_message(message.chat.id, txt)
+        conn.close()
+        
+        if not rows:
+            return bot.send_message(message.chat.id, "Hozircha foydalanuvchilar yo'q.")
+
+        text = "👤 **Barcha foydalanuvchilar ro'yxati:**\n\n"
+        for index, row in enumerate(rows, 1):
+            text += f"{index}. {row[1]} (ID: `{row[2]}`)\n"
+            
+            # Telegram limiti 4096 belgi, 3500 belgida xabarni bo'lib yuboramiz
+            if len(text) > 3500:
+                bot.send_message(message.chat.id, text, parse_mode="Markdown")
+                text = ""
+        
+        if text:
+            bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+    elif message.text == "🤖 Bot holati":
+        bot.send_message(message.chat.id, "✅ Bot holati: **Online**\nServer: Render.com\nBaza: SQLite3", parse_mode="Markdown")
+
     elif message.text == "❌ Bekor qilish" or message.text == "⬅️ Chiqish":
         broadcast_mode = False
-        bot.send_message(message.chat.id, "Menyu yopildi", reply_markup=telebot.types.ReplyKeyboardRemove())
+        bot.send_message(message.chat.id, "Admin panel yopildi.", reply_markup=telebot.types.ReplyKeyboardRemove())
+
     elif broadcast_mode:
         broadcast_mode = False
+        bot.send_message(message.chat.id, "🚀 Xabar tarqatish boshlandi...")
         conn = sqlite3.connect("users.db")
         cursor = conn.cursor()
         cursor.execute("SELECT user_id FROM users")
-        users = cursor.fetchall()
-        for u in users:
-            try: bot.copy_message(u[0], message.chat.id, message.message_id)
+        all_u = cursor.fetchall()
+        conn.close()
+        
+        count = 0
+        for u in all_u:
+            try:
+                bot.copy_message(u[0], message.chat.id, message.message_id)
+                count += 1
+                time.sleep(0.05) # Spamga tushmaslik uchun
             except: pass
-        bot.send_message(message.chat.id, "✅ Xabar tarqatildi.", reply_markup=admin_menu())
+        bot.send_message(message.chat.id, f"✅ Xabar {count} ta foydalanuvchiga yuborildi.", reply_markup=admin_menu())
 
-# --- Yuklash Funksiyasi ---
-def download_video(url, chat_id, message_id):
+# --- Yuklash Funksiyasi (YouTube va Instagram uchun) ---
+def process_video(url, chat_id, wait_msg_id):
     if not os.path.exists('downloads'): os.makedirs('downloads')
     fname = f"downloads/{uuid.uuid4()}.mp4"
     
-    # MUHIM: Instagram va YouTube uchun eng yaxshi sozlamalar
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', # MP4 formatini majburlash
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': fname,
         'quiet': True,
         'no_warnings': True,
-        'cookiefile': 'cookies.txt', # BU SHART!
-        'merge_output_format': 'mp4'
+        'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
+        'merge_output_format': 'mp4',
+        'noplaylist': True
     }
 
     try:
@@ -174,24 +183,35 @@ def download_video(url, chat_id, message_id):
             bot.send_video(chat_id, v, caption=CAPTION_TEXT)
         
         increment_downloads()
-        bot.delete_message(chat_id, message_id)
+        bot.delete_message(chat_id, wait_msg_id)
     except Exception as e:
-        bot.edit_message_text(f"❌ Xatolik: Video yuklab bo'lmadi. Linkni tekshiring yoki botni qayta ishga tushiring.", chat_id, message_id)
+        bot.edit_message_text(f"❌ Xatolik yuz berdi. Link noto'g'ri yoki serverda cheklov mavjud.", chat_id, wait_msg_id)
     finally:
         if os.path.exists(fname): os.remove(fname)
 
 @bot.message_handler(func=lambda m: "instagram.com" in m.text or "youtu" in m.text)
-def handle_links(message):
+def handle_video(message):
     if broadcast_mode: return
     add_user(message.from_user.id, message.from_user.username)
     wait = bot.send_message(message.chat.id, "⏳ Video tayyorlanmoqda, kuting...")
-    # Yuklashni alohida oqimda ishga tushirish (bot qotib qolmasligi uchun)
-    threading.Thread(target=download_video, args=(message.text, message.chat.id, wait.message_id)).start()
+    # Parallel oqimda yuklash (Bot qotmasligi uchun)
+    threading.Thread(target=process_video, args=(message.text, message.chat.id, wait.message_id)).start()
 
-# --- Webhook Setup ---
-WEBHOOK_URL = "https://nsaved.onrender.com/telegram_webhook"
-bot.remove_webhook()
-bot.set_webhook(url=WEBHOOK_URL)
+# --- Webhook ---
+@app.route("/")
+def home(): return "Bot Active 🔥"
+
+@app.route("/telegram_webhook", methods=["POST"])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return ''
+    return 'Forbidden', 403
 
 if __name__ == "__main__":
+    bot.remove_webhook()
+    # Webhookni o'z manzilingizga o'zgartiring
+    bot.set_webhook(url="https://nsaved.onrender.com/telegram_webhook")
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
