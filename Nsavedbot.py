@@ -22,14 +22,14 @@ bot = telebot.TeleBot(BOT_TOKEN)
 def init_db():
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
+    # TO'G'RILANGAN: AUTO_INCREMENT o'rniga INTEGER PRIMARY KEY
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTO_INCREMENT,
+            id INTEGER PRIMARY KEY,
             user_id INTEGER UNIQUE,
             username TEXT
         )
     """)
-    # SQLite-da AUTO_INCREMENT o'rniga AUTOINCREMENT ishlatiladi (agar kerak bo'lsa)
     cursor.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value INTEGER)")
     cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('total_downloads', 0)")
     conn.commit()
@@ -61,9 +61,10 @@ def increment_downloads():
     conn.commit()
     conn.close()
 
+# Bazani ishga tushirish
 init_db()
 
-# --- Admin Panel Menyusi (Rasmdaqa Reply Keyboard) ---
+# --- Admin Panel Menyusi (Reply Keyboard) ---
 def admin_menu():
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row("📢 Kanallarni sozlash")
@@ -81,7 +82,8 @@ broadcast_mode = False
 
 # --- Flask Routes ---
 @app.route("/")
-def home(): return "Admin Panel Active 🔥"
+def home(): 
+    return "Bot is running! 🚀 Webhook is active."
 
 @app.route("/telegram_webhook", methods=["POST"])
 def webhook():
@@ -100,13 +102,26 @@ def start(message):
     try:
         member = bot.get_chat_member(CHANNEL_USERNAME, message.from_user.id)
         if member.status in ["creator", "administrator", "member"]:
-            bot.send_message(message.chat.id, "Obuna tasdiqlandi ✅\nInstagram link yuboring 🚀", reply_markup=telebot.types.ReplyKeyboardRemove())
+            bot.send_message(message.chat.id, "Obuna tasdiqlandi ✅\nInstagram link yuboring 🚀", 
+                             reply_markup=telebot.types.ReplyKeyboardRemove())
         else: raise Exception()
     except:
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("📢 Kanalga obuna bo'ling", url=f"https://t.me/{CHANNEL_USERNAME.strip('@')}"))
         markup.add(InlineKeyboardButton("✅ Obuna bo'ldim", callback_data="check"))
         bot.send_message(message.chat.id, "Botdan foydalanish uchun kanalga a'zo bo'ling!", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data == "check")
+def check_callback(call):
+    try:
+        member = bot.get_chat_member(CHANNEL_USERNAME, call.from_user.id)
+        if member.status in ["creator", "administrator", "member"]:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            bot.send_message(call.message.chat.id, "Tayyor! Instagram link yuboring 🚀")
+        else:
+            bot.answer_callback_query(call.id, "❌ Siz hali kanalga obuna bo'lmagansiz!", show_alert=True)
+    except:
+        bot.answer_callback_query(call.id, "❌ Xatolik yuz berdi. Qayta urinib ko'ring.")
 
 @bot.message_handler(commands=["admin", "panel"])
 def admin_start(message):
@@ -119,45 +134,46 @@ def admin_logic(message):
     
     if message.text == "📊 Statistika":
         u, d = get_stats()
-        text = f"📈 **Bot statistikasi:**\n\n👤 Foydalanuvchilar: {u} ta\n📥 Yuklashlar: {d} ta"
+        text = f"📈 **Bot statistikasi:**\n\n👤 Jami foydalanuvchilar: {u} ta\n📥 Jami yuklashlar: {d} ta"
         bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
     elif message.text == "📩 Xabar Yuborish":
         broadcast_mode = True
-        bot.send_message(message.chat.id, "Xabaringizni yuboring (Matn, rasm, video, audio...):", 
-                         reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add("❌ Bekor qilish"))
+        cancel_kb = ReplyKeyboardMarkup(resize_keyboard=True).add("❌ Bekor qilish")
+        bot.send_message(message.chat.id, "Barcha userlarga yubormoqchi bo'lgan xabaringizni yuboring (Matn, rasm, video, audio...):", 
+                         reply_markup=cancel_kb)
 
     elif message.text == "🤖 Bot holati":
-        bot.send_message(message.chat.id, "✅ Bot 24/7 rejimida ishlamoqda.\nPlatforma: Render.com")
+        bot.send_message(message.chat.id, "✅ Bot Render.com platformasida 24/7 ishlamoqda.")
 
-    elif message.text == "📩 Userlar":
-        conn = sqlite3.connect("users.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, username, user_id FROM users ORDER BY id DESC LIMIT 20")
-        rows = cursor.fetchall()
-        text = "👤 **Oxirgi 20 ta user:**\n\n"
-        for r in rows:
-            text += f"{r[0]}. {r[1]} | ID: `{r[2]}`\n"
-        bot.send_message(message.chat.id, text, parse_mode="Markdown")
+    elif message.text == "👑 Adminlar":
+        bot.send_message(message.chat.id, f"👤 Asosiy admin: `{ADMIN_ID}`", parse_mode="Markdown")
 
     elif message.text == "❌ Bekor qilish" or message.text == "⬅️ Chiqish":
         broadcast_mode = False
-        bot.send_message(message.chat.id, "Asosiy menyu", reply_markup=admin_menu())
+        bot.send_message(message.chat.id, "Asosiy menyuga qaytdingiz.", reply_markup=admin_menu())
 
     elif broadcast_mode:
-        bot.send_message(message.chat.id, "🚀 Xabar tarqatilmoqda...")
+        broadcast_mode = False
+        msg_wait = bot.send_message(message.chat.id, "🚀 Xabar tarqatilmoqda, kuting...")
+        
         conn = sqlite3.connect("users.db")
         cursor = conn.cursor()
         cursor.execute("SELECT user_id FROM users")
         all_u = cursor.fetchall()
-        count = 0
+        conn.close()
+        
+        success_count = 0
         for u in all_u:
             try:
                 bot.copy_message(u[0], message.chat.id, message.message_id)
-                count += 1
+                success_count += 1
+                time.sleep(0.05) # Spamga tushmaslik uchun kichik pauza
             except: pass
-        broadcast_mode = False
-        bot.send_message(message.chat.id, f"✅ Xabar {count} ta userga yetkazildi.", reply_markup=admin_menu())
+            
+        bot.delete_message(message.chat.id, msg_wait.message_id)
+        bot.send_message(message.chat.id, f"✅ Xabar {success_count} ta userga muvaffaqiyatli yetkazildi.", 
+                         reply_markup=admin_menu())
 
 # --- Video Download ---
 @bot.message_handler(func=lambda m: "instagram.com" in m.text or "youtu" in m.text)
@@ -165,21 +181,34 @@ def down(message):
     if broadcast_mode: return
     add_user(message.from_user.id, message.from_user.username)
     
-    wait = bot.send_message(message.chat.id, "⏳ Video tayyorlanmoqda...")
-    fname = f"downloads/{uuid.uuid4()}.mp4"
-    if not os.path.exists('downloads'): os.makedirs('downloads')
+    wait = bot.send_message(message.chat.id, "⏳ Video tayyorlanmoqda, kuting...")
     
-    ydl_opts = {"format": "best", "outtmpl": fname, "quiet": True, "cookiefile": "cookies.txt"}
+    if not os.path.exists('downloads'): os.makedirs('downloads')
+    fname = f"downloads/{uuid.uuid4()}.mp4"
+    
+    ydl_opts = {
+        "format": "best", 
+        "outtmpl": fname, 
+        "quiet": True, 
+        "cookiefile": "cookies.txt",
+        "no_warnings": True
+    }
+    
     try:
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([message.text])
+            
         with open(fname, "rb") as v:
             bot.send_video(message.chat.id, v, caption=CAPTION_TEXT)
+            
         increment_downloads()
         bot.delete_message(message.chat.id, wait.message_id)
-        os.remove(fname)
+        if os.path.exists(fname): os.remove(fname)
+        
     except Exception as e:
-        bot.edit_message_text(f"❌ Xatolik yuz berdi. Linkni tekshiring.", message.chat.id, wait.message_id)
+        bot.edit_message_text(f"❌ Xatolik yuz berdi. Link noto'g'ri yoki video yuklashda muammo bor.", 
+                              message.chat.id, wait.message_id)
+        if os.path.exists(fname): os.remove(fname)
 
 # --- Webhook Setup ---
 WEBHOOK_URL = "https://nsaved.onrender.com/telegram_webhook"
@@ -187,4 +216,5 @@ bot.remove_webhook()
 bot.set_webhook(url=WEBHOOK_URL)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
